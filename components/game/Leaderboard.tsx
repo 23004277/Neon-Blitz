@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Tank as TankType } from '../../types';
 import HealthBar from './HealthBar';
@@ -65,7 +66,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ player, enemies }) => {
               </p>
               <HealthBar 
                 currentHealth={tank.health} 
-                maxHealth={3} 
+                maxHealth={tank.maxHealth} 
                 color={tank.type === 'player' ? 'var(--color-primary-cyan)' : 'var(--color-primary-magenta)'}
                 shieldHealth={tank.shieldHealth}
                 maxShieldHealth={3}
