@@ -18,7 +18,7 @@ const ARENA_WIDTH = 1000;
 const ARENA_HEIGHT = 700;
 const TANK_WIDTH = 40;
 const TANK_HEIGHT = 50;
-const TANK_HITBOX_SIZE = 20; // Reduced hitbox size (was 30) for smoother collision and navigation
+const TANK_HITBOX_SIZE = 20; // Reduced hitbox size for smoother collision and navigation
 const BARREL_LENGTH = TANK_HEIGHT / 1.6; // Sync with renderer
 const PLAYER_SPEED = 1.75;
 const TANK_HEALTH = 8;
@@ -163,14 +163,12 @@ const getInitialMinionState = (id: string, position: Vector, spawnTime: number):
   lastFireTime: 0,
 });
 
-// Modified to accept config and return appropriate state
 const getInitialGameState = (config: GameConfig): GameState => {
     const now = Date.now();
     let enemies: TankType[] = [];
     let boss: Boss | null = null;
 
     if (config.mode === 'duel' && config.duelConfig) {
-        // Duel Mode Initialization
         if (config.duelConfig.opponentType === 'boss') {
             boss = { 
                 id: 'boss-1', 
@@ -199,7 +197,6 @@ const getInitialGameState = (config: GameConfig): GameState => {
             ];
         }
     } else {
-        // Campaign Mode Initialization
         enemies = getInitialEnemies(now);
     }
 
@@ -272,7 +269,6 @@ class GameManager {
         this.navGrid = createNavGrid(ARENA_WIDTH, ARENA_HEIGHT, PATHFINDING_CELL_SIZE, initialWalls, TANK_WIDTH, TANK_HEIGHT);
         this.lastLaserDamageTime = 0;
         
-        // Initialize Game Phase
         if (gameConfig.mode === 'duel') {
             this.gamePhase = 'duel';
         } else if (this.state.boss) {
@@ -308,7 +304,7 @@ class GameManager {
         if (!target.statusEffects) target.statusEffects = [];
         let poison = target.statusEffects.find(e => e.type === 'poison') as PoisonStatusEffect | undefined;
         if (poison) {
-            poison.stacks = Math.min(5, poison.stacks + stacks); // Cap stacks at 5
+            poison.stacks = Math.min(5, poison.stacks + stacks);
             poison.lastApplied = now;
         } else {
             const newPoison: PoisonStatusEffect = { type: 'poison', ownerId: 'player', stacks, lastApplied: now, duration: POISON_STACK_DURATION, tickDamage: POISON_TICK_DAMAGE, tickInterval: POISON_TICK_INTERVAL, lastTickTime: now };
@@ -428,7 +424,7 @@ class GameManager {
             let newBarrageStrikeStartTime: number | null = prev.barrageStrikeStartTime;
             let newCyberBeamTarget: Vector | null = prev.cyberBeamTarget;
             let newLastBarrageImpactTime: number = prev.lastBarrageImpactTime;
-            // Use spread to clone boss state if it exists
+            
             let newBossState: Boss | null = prev.boss ? { ...prev.boss, attackState: { ...prev.boss.attackState, attackData: { ...prev.boss.attackState.attackData } } } : null; 
             let newTelegraphs = isTimeStopped ? prev.telegraphs : [...prev.telegraphs.filter(t => now - t.createdAt < t.duration)];
             let newEffectZones = [...prev.effectZones.filter(z => now - z.createdAt < z.duration)];
@@ -442,7 +438,6 @@ class GameManager {
             const cyberBeamAbility = newAbilities.find(a => a.id === 'cyberBeam');
             const toxicRoundsAbility = newAbilities.find(a => a.id === 'toxicRounds');
             
-            // Helper to get all active obstacles for collision detection
             const getActiveObstacles = (excludeId?: string) => {
                 const obs: (TankType | Boss | Minion)[] = [
                     ...enemiesAfterAI.filter(e => e.status === 'active'),
@@ -463,8 +458,6 @@ class GameManager {
             
             if (newPlayerState.status === 'spawning' && now >= (newPlayerState.spawnTime || 0) + SPAWN_DURATION) newPlayerState.status = 'active';
             if (newPlayerState.status === 'dying' && now >= (newPlayerState.deathTime || 0) + DEATH_DURATION) {
-                // Respawn logic modified for Duel Mode - Player death means loss, but standard mechanics keep respawning for now or could end game.
-                // Keeping standard respawn for playability
                 newPlayerState = {
                     ...getInitialPlayerState(now), name: newPlayerState.name, score: newPlayerState.score, kills: newPlayerState.kills, deaths: newPlayerState.deaths + 1,
                     position: this.findSafeSpawnPoint(getActiveObstacles()),
@@ -482,14 +475,12 @@ class GameManager {
             }
 
             if (!isTimeStopped) {
-                // Enemy AI update logic
                 const intermediateEnemies: TankType[] = [];
                 for (const enemy of prev.enemies) {
                     let updatedEnemy: TankType = { ...enemy };
                     if (updatedEnemy.activePowerUp && now > (updatedEnemy.powerUpExpireTime || 0)) { updatedEnemy.activePowerUp = null; updatedEnemy.powerUpExpireTime = undefined; }
                     if (updatedEnemy.status === 'spawning' && now >= (updatedEnemy.spawnTime || 0) + SPAWN_DURATION) updatedEnemy.status = 'active';
                     
-                    // Campaign Mode Respawn Logic
                     if (this.gameConfig.mode === 'campaign') {
                         if (updatedEnemy.status === 'dying' && now >= (updatedEnemy.respawnTime || 0)) {
                             const newPosition = this.findSafeSpawnPoint(getActiveObstacles());
@@ -498,9 +489,8 @@ class GameManager {
                             updatedEnemy = { ...freshEnemy, score: enemy.score, kills: enemy.kills, deaths: enemy.deaths + 1 };
                         }
                     } else if (this.gameConfig.mode === 'duel') {
-                        // In duel mode, enemies don't respawn.
                         if (updatedEnemy.status === 'dying' && now >= (updatedEnemy.deathTime || 0) + DEATH_DURATION) {
-                            continue; // Remove from array
+                            continue;
                         }
                     }
 
@@ -525,7 +515,6 @@ class GameManager {
                     intermediateEnemies.push(updatedEnemy);
                 }
                 enemiesAfterAI = intermediateEnemies.map(enemy => {
-                    // ... [Existing enemy movement logic] ...
                     if (enemy.status !== 'active') return enemy;
                     const isStunned = enemy.statusEffects?.some(e => e.type === 'stun' && now - e.startTime < e.duration) ?? false;
                     if (isStunned) return enemy;
@@ -553,10 +542,10 @@ class GameManager {
 
                     let newPath = updatedEnemy.path; let newPatrolTarget = updatedEnemy.patrolTarget; let targetForMovement: Vector | null = null;
                     if (playerIsTargetable) {
-                    targetForMovement = playerPos;
+                        targetForMovement = playerPos;
                     } else {
                         if (!newPatrolTarget || (newPath && newPath.length === 0) || (newPatrolTarget && Math.hypot(newPatrolTarget.x - enemy.position.x, newPatrolTarget.y - enemy.position.y) < PATHFINDING_CELL_SIZE)) {
-                        newPatrolTarget = this.findSafeSpawnPoint(obstaclesForEnemy);
+                            newPatrolTarget = this.findSafeSpawnPoint(obstaclesForEnemy);
                         }
                         targetForMovement = newPatrolTarget;
                     }
@@ -588,7 +577,6 @@ class GameManager {
                 if (collectedPowerUpIds.size > 0) { newPowerUps = newPowerUps.filter(p => !collectedPowerUpIds.has(p.id)); }
             }
 
-            // ... [Player movement logic remains unchanged] ...
             if (newPlayerState.status === 'active') {
                 const speedMultiplier = overdriveAbility?.state === 'active' ? OVERDRIVE_SPEED_MULTIPLIER : (prev.isAiming === 'barrage' || prev.isAiming === 'chronoBubble') ? BARRAGE_AIM_SLOW_FACTOR : 1;
                 let playerVelocity = { x: 0, y: 0 };
@@ -651,7 +639,7 @@ class GameManager {
                         tank.homingMissileCount--;
                         if(tank.homingMissileCount <= 0) { tank.activePowerUp = null; }
                         createdProjectiles.push({ id: `p-homing-${now}`, ownerId: tank.id, position: muzzlePos, angle: tank.turretAngle, size: {width: 10, height: 15}, isHoming: true, turnRate: HOMING_MISSILE_TURN_RATE, damage });
-                        return; // Homing missile fired, don't fire standard shots
+                        return;
                     } else if (tank.tier === 'intermediate') {
                         const spreadAngles = [-15, 0, 15];
                         spreadAngles.forEach(offset => {
@@ -736,7 +724,6 @@ class GameManager {
                 });
             }
 
-            // ... [Projectile and ability logic] ...
             if (newBarrageStrikeStartTime && now >= newBarrageStrikeStartTime && newBarrageTarget && !isTimeStopped) {
                 const currentBarrageRadius = newBarrageTarget.isChronoBoosted ? BARRAGE_RADIUS * 0.7 : BARRAGE_RADIUS;
                 const currentImpactInterval = newBarrageTarget.isChronoBoosted ? BARRAGE_IMPACT_INTERVAL * 0.6 : BARRAGE_IMPACT_INTERVAL;
@@ -765,7 +752,6 @@ class GameManager {
             newMinions.forEach(m => tanksById.set(m.id, m));
             if (newBossState) tanksById.set(newBossState.id, newBossState);
 
-            // ... [Cyber Beam logic remains unchanged] ...
             if (isTimeStopped && cyberBeamAbility?.state === 'active') {
                 if (now - this.lastChronoShardTime > CHRONO_SHARD_SPAWN_INTERVAL) {
                     this.lastChronoShardTime = now;
@@ -804,7 +790,6 @@ class GameManager {
             }
 
             for (const proj of allProjectiles) {
-                // ... [Projectile loop remains unchanged] ...
                 if (proj.isFrozen) {
                     updatedProjs.push(proj); continue;
                 }
@@ -821,11 +806,11 @@ class GameManager {
                         if (proj.targetId) {
                             target = tanksById.get(proj.targetId) || null;
                             if (!target || target.status !== 'active') {
-                                proj.targetId = undefined; // Clear it to re-acquire
+                                proj.targetId = undefined;
                                 target = null;
                             }
                         }
-                        if (!target && !proj.isChronoShard) { // Only missiles re-acquire like this
+                        if (!target && !proj.isChronoShard) {
                             let closestEnemy: TankType | Boss | Minion | null = null; let minDistance = Infinity;
                             const potentialTargets: (TankType | Boss | Minion)[] = [...enemiesAfterAI, ...(newBossState ? [newBossState] : []), ...newMinions].filter(e => e.status === 'active');
                             potentialTargets.forEach(enemy => { const d = Math.hypot(enemy.position.x - proj.position.x, enemy.position.y - proj.position.y); if (d < minDistance) { minDistance = d; closestEnemy = enemy; } });
@@ -842,7 +827,7 @@ class GameManager {
                         newPos = { x: proj.position.x + Math.cos(rad) * speed * speedModifier, y: proj.position.y + Math.sin(rad) * speed * speedModifier };
                     } else if (proj.isChronoShard) {
                         const rad = (proj.angle - 90) * (Math.PI / 180);
-                        newPos = { x: proj.position.x + Math.cos(rad) * PROJECTILE_SPEED * 4, y: proj.position.y + Math.sin(rad) * PROJECTILE_SPEED * 4 }; // Very fast
+                        newPos = { x: proj.position.x + Math.cos(rad) * PROJECTILE_SPEED * 4, y: proj.position.y + Math.sin(rad) * PROJECTILE_SPEED * 4 };
                     } else if (proj.isBossOrb) {
                         const speed = BOSS_ORB_SPEED;
                         const rad = (newAngle - 90) * (Math.PI / 180);
@@ -865,23 +850,60 @@ class GameManager {
                     } else {
                         newAnimations.push({ id: `hit-${proj.id}`, type: 'hit', createdAt: now, duration: HIT_ANIMATION_DURATION, position: proj.position });
                     }
-                    continue; // Skip the rest of the loop for this projectile
+                    continue;
                 }
-                for (const target of Array.from(tanksById.values()).filter(t => t.id !== proj.ownerId && (t.status === 'active' || t.status === 'spawning'))) {
+
+                // COLLISION CHECK LOGIC REFINED
+                for (const target of Array.from(tanksById.values())) {
+                    if (target.id === proj.ownerId || (target.status !== 'active' && target.status !== 'spawning')) continue;
+
                     const targetSize = 'size' in target ? target.size : MINION_SIZE;
                     const targetRect = { x: target.position.x - targetSize.width / 2, y: target.position.y - targetSize.height / 2, width: targetSize.width, height: targetSize.height };
-                    if ('isInvulnerable' in target && target.isInvulnerable) continue;
+                    
                     if (this.checkCollision(projRect, targetRect)) {
+                        const isPlayer = target.id === 'player';
+                        
+                        // Check explicit invulnerability first
+                        if ('isInvulnerable' in target && target.isInvulnerable) break; // Use break here to consume projectile? Or continue to pass through? Standard logic suggests break if it "hits" but does no damage, effectively absorbing it.
+                        
+                        // Check time stop for player projectiles
                         if (isTimeStopped && proj.ownerId === 'player' && !proj.isChronoShard) {
                              updatedProjs.push({ ...proj, position: newPos, isFrozen: true });
-                        } else if (target.id === newPlayerState.id && newPlayerState.activePowerUp === 'reflectorField') {
+                             hit = true; 
+                             break;
+                        } 
+                        
+                        // Reflector Field logic for player
+                        if (isPlayer && newPlayerState.activePowerUp === 'reflectorField') {
                             const reflectedProj = {...proj, ownerId: 'player', angle: proj.angle + 180};
                             updatedProjs.push(reflectedProj);
-                        } else if (target.status === 'spawning' && now - (target.spawnTime || 0) < SPAWN_INVULNERABILITY) {} 
-                        else if ('activePowerUp' in target && target.activePowerUp === 'shield' && target.shieldHealth && target.shieldHealth > 0) {
-                            target.shieldHealth -= 1; newAnimations.push({ id: `shieldHit-${proj.id}`, type: 'shieldHit', createdAt: now, duration: 300, position: proj.position, color: ('color' in target ? target.color : '#FFFFFF') });
-                            if (target.shieldHealth <= 0) { target.activePowerUp = null; target.shieldHealth = undefined; newAnimations.push({ id: `shieldBreak-${target.id}-${now}`, type: 'shieldBreak', createdAt: now, duration: 400, position: target.position, color: ('color' in target ? target.color : '#FFFFFF') }); this.triggerShake(8, 300); }
-                        } else if (target.health > 0) { 
+                            hit = true;
+                            break;
+                        } 
+                        
+                        // Spawn Invulnerability Check - ensure logic covers the gap
+                        if (target.status === 'spawning' && now - (target.spawnTime || 0) < SPAWN_INVULNERABILITY) {
+                             // Hit but no damage
+                             hit = true; 
+                             break;
+                        }
+                        
+                        // Shield Logic
+                        if ('activePowerUp' in target && target.activePowerUp === 'shield' && target.shieldHealth && target.shieldHealth > 0) {
+                            target.shieldHealth -= 1; 
+                            newAnimations.push({ id: `shieldHit-${proj.id}`, type: 'shieldHit', createdAt: now, duration: 300, position: proj.position, color: ('color' in target ? target.color : '#FFFFFF') });
+                            if (target.shieldHealth <= 0) { 
+                                target.activePowerUp = null; 
+                                target.shieldHealth = undefined; 
+                                newAnimations.push({ id: `shieldBreak-${target.id}-${now}`, type: 'shieldBreak', createdAt: now, duration: 400, position: target.position, color: ('color' in target ? target.color : '#FFFFFF') }); 
+                                this.triggerShake(8, 300); 
+                            }
+                            hit = true;
+                            break;
+                        } 
+                        
+                        // Apply Damage
+                        if (target.health > 0) { 
                             if (proj.isHoming && !proj.isChronoShard) {
                                 newAnimations.push({id: `homing-exp-${proj.id}`, type: 'homingExplosion', createdAt: now, duration: HOMING_EXPLOSION_DURATION, position: proj.position});
                                 this.triggerShake(12, 400);
@@ -923,19 +945,27 @@ class GameManager {
                                 }
                             }
                         }
-                        hit = true; break;
+                        hit = true; 
+                        break;
                     }
                 }
                 if (!hit) updatedProjs.push({ ...proj, position: newPos, angle: newAngle });
             }
             
+            if (newPlayerState.status === 'active' && newPlayerState.health <= 0) {
+                 newPlayerState.status = 'dying';
+                 newPlayerState.deathTime = now;
+                 newAnimations.push({ id: `exp-${newPlayerState.id}-${now}`, type: 'explosion', createdAt: now, duration: DEATH_DURATION, position: newPlayerState.position, color: newPlayerState.color });
+                 this.triggerShake(10, 500);
+            }
+
             const allTanksAndBossAndMinions = [...enemiesAfterAI, ...(newBossState ? [newBossState] : []), ...newMinions];
             allTanksAndBossAndMinions.forEach(enemy => {
                 if (enemy.status === 'active' && enemy.health <= 0) {
                     enemy.status = 'dying'; enemy.deathTime = now; newAnimations.push({ id: `exp-${enemy.id}-${now}`, type: 'explosion', createdAt: now, duration: DEATH_DURATION, position: enemy.position, color: ('color' in enemy ? enemy.color : '#ef4444') });
                     this.triggerShake(7, 400); 
 
-                    if ('type' in enemy) { // It's a Tank or Boss
+                    if ('type' in enemy) { 
                         if ('respawnTime' in enemy) enemy.respawnTime = now + DEATH_DURATION + RESPAWN_DELAY;
                         newPlayerState.kills += 1; 
                         newPlayerState.score += (enemy.id === 'boss-1' ? 1000 : KILL_SCORE);
@@ -944,7 +974,7 @@ class GameManager {
                             od.mastered = true;
                             newMasteryNotification = { text: 'OVERDRIVE MASTERY UNLOCKED', startTime: now };
                         }
-                    } else { // It's a Minion
+                    } else { 
                         newPlayerState.score += MINION_KILL_SCORE;
                     }
                 }
@@ -952,7 +982,6 @@ class GameManager {
             
             newMinions = newMinions.filter(m => !(m.status === 'dying' && now >= (m.deathTime || 0) + DEATH_DURATION));
             
-            // Ability logic
             newAbilities = prev.abilities.map(ability => {
                 let currentDuration = ability.duration;
                 let currentCooldown = ability.cooldown;
@@ -979,7 +1008,7 @@ class GameManager {
                             this.controlSound(this.audioManager.beamActive, 'stop');
                             newCyberBeamTarget = null;
                             return { ...ability, state: 'cooldown', startTime: now };
-                        } else if (!isTimeStopped) { // Only update target if not creating shards
+                        } else if (!isTimeStopped) {
                             const currentTarget = prev.cyberBeamTarget || this.mousePosition;
                             newCyberBeamTarget = { x: currentTarget.x + (this.mousePosition.x - currentTarget.x) * CYBER_BEAM_INTERPOLATION_FACTOR, y: currentTarget.y + (this.mousePosition.y - currentTarget.y) * CYBER_BEAM_INTERPOLATION_FACTOR };
                         }
@@ -999,7 +1028,6 @@ class GameManager {
                 return ability;
             });
 
-            // ... [Chrono Bubble and Time Stop logic] ...
             let newIsTimeStopped = isTimeStopped;
             const timeStopAbility = newAbilities.find(a => a.id === 'timeStop');
             if (isTimeStopped && timeStopAbility?.state !== 'active') {
@@ -1019,7 +1047,6 @@ class GameManager {
                 }
             }
             
-            // Duel Win Condition Logic
             if (this.gameConfig.mode === 'duel') {
                 if (!duelWon) {
                     const bossDead = newBossState === null || newBossState.status === 'dying';
@@ -1029,15 +1056,12 @@ class GameManager {
                     }
                 }
             } else if (this.gamePhase === 'pre-boss' && newPlayerState.score >= BOSS_SPAWN_SCORE) {
-                // Campaign Logic
                 this.gamePhase = 'boss';
                 enemiesAfterAI = []; 
                 newBossState = { id: 'boss-1', name: 'Goliath', position: { x: ARENA_WIDTH / 2, y: 120 }, angle: 180, patrolTarget: undefined, size: { width: BOSS_WIDTH, height: BOSS_HEIGHT }, health: BOSS_HEALTH, maxHealth: BOSS_HEALTH, turretAngle: 180, status: 'spawning', spawnTime: now, color: '#ef4444', attackState: { currentAttack: 'none', phase: 'idle', phaseStartTime: now } };
             }
 
             if (newBossState && !isTimeStopped) {
-                // ... [Existing Boss Logic] ...
-                // Boss logic handles Last Stand, Attacks, etc.
                 const isStunned = newBossState.statusEffects?.some(e => e.type === 'stun' && now - e.startTime < e.duration) ?? false;
                 if (!isStunned) {
                     if (newBossState.health / newBossState.maxHealth <= LAST_STAND_HEALTH_THRESHOLD && !newBossState.hasUsedLastStand) {
@@ -1051,7 +1075,6 @@ class GameManager {
                     if (newBossState.status === 'dying' && now >= (newBossState.deathTime || 0) + DEATH_DURATION * 2) {
                         if (this.gamePhase === 'boss') {
                             this.gamePhase = 'post-boss';
-                            // Campaign only logic
                             if (this.gameConfig.mode === 'campaign') {
                                 enemiesAfterAI = getInitialEnemies(now).map(e => ({...e, tier: 'intermediate', color: '#f97316'}));
                             }
@@ -1060,7 +1083,6 @@ class GameManager {
                     }
 
                     if (newBossState && newBossState.status === 'active') {
-                        // ... [Boss AI logic] ...
                         const dx = newPlayerState.position.x - newBossState.position.x; const dy = newPlayerState.position.y - newBossState.position.y;
                         const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90; let currentAngle = newBossState.turretAngle;
                         let angleDiff = targetAngle - currentAngle; while (angleDiff < -180) angleDiff += 360; while (angleDiff > 180) angleDiff -= 360;
@@ -1208,7 +1230,6 @@ class GameManager {
                 }
             }
             if (!isTimeStopped) {
-                // ... [Minion Logic remains unchanged] ...
                 newMinions.forEach(minion => {
                     if (minion.status === 'spawning' && now >= minion.spawnTime + MINION_SPAWN_DURATION) {
                         minion.status = 'active';
@@ -1216,13 +1237,11 @@ class GameManager {
                     const isStunned = minion.statusEffects?.some(e => e.type === 'stun' && now - e.startTime < e.duration) ?? false;
                     
                     if (minion.status === 'active' && !isStunned) {
-                        // Minion Tracking AI
                         const dx = newPlayerState.position.x - minion.position.x;
                         const dy = newPlayerState.position.y - minion.position.y;
                         const dist = Math.hypot(dx, dy);
                         
-                        // Move towards player but keep distance
-                        if (dist > 80 && dist < 600) { // Only move if reasonably close but not too close
+                        if (dist > 80 && dist < 600) { 
                             const moveX = (dx / dist) * MINION_SPEED;
                             const moveY = (dy / dist) * MINION_SPEED;
                             
@@ -1253,8 +1272,8 @@ class GameManager {
 
 const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: GameConfig }> = ({ navigateTo, config }) => {
     const { settings } = useSettings();
-    // Default to campaign if config is missing (safety)
-    const effectiveConfig = config || { mode: 'campaign' };
+    // FIX: Explicitly type useMemo to GameConfig to prevent 'mode: string' inference issues.
+    const effectiveConfig = useMemo<GameConfig>(() => config || { mode: 'campaign' }, [config]);
     
     const [gameState, setGameState] = useState<GameState>(getInitialGameState(effectiveConfig));
     const [shake, setShake] = useState({ x: 0, y: 0 });
@@ -1423,15 +1442,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: Game
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d', { alpha: false }); if (!ctx) return;
         const now = Date.now();
-        // const degToRad = (d: number) => d * (Math.PI / 180); // Not directly used here, but kept if needed by other render functions
         
         ctx.save();
         if (gameState.isTimeStopped) {
             const timeStopAbility = gameState.abilities.find(a => a.id === 'timeStop');
             const duration = timeStopAbility?.duration || 1;
             const elapsed = now - (timeStopAbility?.startTime || 0);
-            const fadeInProgress = Math.min(1, elapsed / 500); // 0.5s fade in
-            const fadeOutProgress = Math.max(0, (elapsed - (duration - 500)) / 500); // 0.5s fade out
+            const fadeInProgress = Math.min(1, elapsed / 500);
+            const fadeOutProgress = Math.max(0, (elapsed - (duration - 500)) / 500);
             const grayscale = Math.min(1, fadeInProgress - fadeOutProgress);
             ctx.filter = `grayscale(${grayscale * 100}%) brightness(${100 - grayscale * 20}%)`;
         }
@@ -1495,7 +1513,6 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: Game
         });
         drawAnimations(ctx, gameState.animations, now);
 
-        // Last Stand screen tint overlay
         const boss = gameState.boss;
         if (boss && boss.attackState.currentAttack === 'lastStand' && boss.attackState.phase === 'telegraphing') {
             const chargeProgress = (now - boss.attackState.phaseStartTime) / (boss.attackState.attackData?.telegraphDuration || 6500);
@@ -1504,7 +1521,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: Game
             ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
         }
 
-        ctx.restore(); // Restore from filter
+        ctx.restore();
         if (gameState.isTimeStopped) {
             drawTimeStopOverlay(ctx, now);
         }
@@ -1562,7 +1579,6 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: Game
                                 <span>Integrity</span>
                                 <span>{Math.max(0, (gameState.player?.health || 0) / TANK_HEALTH * 100).toFixed(0)}%</span>
                             </div>
-                             {/* Player Health Bar would go here but we use HUD/Leaderboard mostly. Let's make a simple one here too or just info */}
                              <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
                                 <div className="h-full bg-[var(--color-primary-cyan)]" style={{ width: `${Math.max(0, (gameState.player?.health || 0) / TANK_HEALTH * 100)}%` }}></div>
                              </div>
@@ -1595,12 +1611,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config?: Game
                 </div>
             </div>
 
-            {/* Global HUD Overlay */}
             <div className="fixed top-6 left-6 pointer-events-none">
                  <HUD enemiesRemaining={gameState.enemies.filter(e => e.status === 'active').length + gameState.minions.filter(m => m.status === 'active').length + (gameState.boss && gameState.boss.status === 'active' ? 1 : 0)} />
             </div>
             
-            {/* Boss Health Bar */}
             {gameState.boss && gameState.boss.status === 'active' && (
                 <BossHealthBar boss={gameState.boss} />
             )}
