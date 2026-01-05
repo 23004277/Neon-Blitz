@@ -1,0 +1,263 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neon Blitz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --color-background: #030507;
+        --color-primary-cyan: #00F0FF;
+        --color-primary-magenta: #FF003C;
+        --color-secondary-purple: #BC13FE;
+        --color-accent-yellow: #FCEE0A;
+        --color-text-light: #F0F4F8;
+        --color-text-dim: #8892B0;
+        --color-panel-bg: rgba(10, 15, 25, 0.85);
+        --color-border: rgba(0, 240, 255, 0.3);
+        --color-border-glow: rgba(0, 240, 255, 0.6);
+      }
+
+      body {
+        font-family: 'Rajdhani', sans-serif;
+        background-color: var(--color-background);
+        color: var(--color-text-light);
+        user-select: none;
+        -webkit-user-select: none;
+        overflow: hidden;
+        margin: 0;
+      }
+
+      *:focus {
+        outline: none;
+      }
+
+      /* Typography */
+      .font-orbitron { font-family: 'Orbitron', sans-serif; }
+      .font-rajdhani { font-family: 'Rajdhani', sans-serif; }
+
+      /* Utility Classes */
+      .cyber-panel {
+        background: var(--color-panel-bg);
+        border: 1px solid var(--color-border);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      }
+
+      .cyber-border {
+        position: relative;
+      }
+      .cyber-border::before, .cyber-border::after {
+        content: '';
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        transition: all 0.3s ease;
+      }
+      
+      .clip-corner-1 { clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px); }
+      .clip-corner-2 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%); }
+      .clip-corner-4 { clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+      .clip-hex { clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px); }
+
+      /* Glows */
+      .text-glow-cyan { text-shadow: 0 0 10px rgba(0, 240, 255, 0.7); }
+      .text-glow-magenta { text-shadow: 0 0 10px rgba(255, 0, 60, 0.7); }
+      .text-glow-yellow { text-shadow: 0 0 10px rgba(252, 238, 10, 0.7); }
+      
+      .box-glow-cyan { box-shadow: 0 0 15px rgba(0, 240, 255, 0.2), inset 0 0 10px rgba(0, 240, 255, 0.1); }
+      .box-glow-magenta { box-shadow: 0 0 15px rgba(255, 0, 60, 0.2), inset 0 0 10px rgba(255, 0, 60, 0.1); }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+      ::-webkit-scrollbar-thumb { background: var(--color-primary-cyan); border-radius: 3px; }
+
+      /* CRT / Scanline Effects */
+      .scanlines {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+        background-size: 100% 2px, 3px 100%;
+        opacity: 0.6;
+      }
+      
+      /* Grid Background */
+      .grid-bg {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(to right, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+        transform: perspective(500px) rotateX(60deg);
+        transform-origin: center top;
+        animation: grid-move 20s linear infinite;
+      }
+
+      @keyframes grid-move {
+        0% { background-position: 0 0; }
+        100% { background-position: 0 40px; }
+      }
+
+      /* Tech Background Patterns */
+      .bg-tech-dots {
+        background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+      .bg-tech-lines {
+        background: repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 10px,
+          rgba(0, 240, 255, 0.03) 10px,
+          rgba(0, 240, 255, 0.03) 11px
+        );
+      }
+
+      /* Animations */
+      @keyframes glitch-skew {
+        0% { transform: skew(0deg); }
+        20% { transform: skew(-2deg); }
+        40% { transform: skew(2deg); }
+        60% { transform: skew(-1deg); }
+        80% { transform: skew(1deg); }
+        100% { transform: skew(0deg); }
+      }
+
+      .animate-glitch:hover {
+        animation: glitch-skew 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+      }
+
+      .text-chromatic {
+        position: relative;
+      }
+      .text-chromatic::before,
+      .text-chromatic::after {
+        content: attr(data-text);
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.8;
+      }
+      .text-chromatic::before {
+        color: #0ff;
+        z-index: -1;
+        animation: glitch-anim-1 2s infinite linear alternate-reverse;
+      }
+      .text-chromatic::after {
+        color: #f0f;
+        z-index: -2;
+        animation: glitch-anim-2 2s infinite linear alternate-reverse;
+      }
+
+      @keyframes glitch-anim-1 {
+        0% { transform: translate(0); }
+        20% { transform: translate(-2px, 2px); }
+        40% { transform: translate(-2px, -2px); }
+        60% { transform: translate(2px, 2px); }
+        80% { transform: translate(2px, -2px); }
+        100% { transform: translate(0); }
+      }
+      @keyframes glitch-anim-2 {
+        0% { transform: translate(0); }
+        20% { transform: translate(2px, -2px); }
+        40% { transform: translate(2px, 2px); }
+        60% { transform: translate(-2px, -2px); }
+        80% { transform: translate(-2px, 2px); }
+        100% { transform: translate(0); }
+      }
+
+      /* Custom Cursor */
+      .custom-cursor {
+        position: fixed;
+        pointer-events: none;
+        z-index: 9999;
+        mix-blend-mode: difference;
+      }
+
+      /* --- NEW TRANSITION & ANIMATION STYLES --- */
+      
+      .screen-transition-wrapper {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .screen-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        animation-duration: 0.5s;
+        animation-fill-mode: forwards;
+        animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .screen-container.in {
+        animation-name: slideIn;
+        z-index: 20;
+      }
+
+      .screen-container.out {
+        animation-name: slideOut;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      @keyframes slideIn {
+        from { opacity: 0; transform: scale(1.1) translateY(20px); filter: blur(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+      }
+
+      @keyframes slideOut {
+        from { opacity: 1; transform: scale(1); filter: blur(0); }
+        to { opacity: 0; transform: scale(0.95); filter: blur(5px); }
+      }
+
+      .animate-slide-up {
+        animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      
+      @keyframes slideUpFade {
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .delay-100 { animation-delay: 100ms; }
+      .delay-200 { animation-delay: 200ms; }
+      .delay-300 { animation-delay: 300ms; }
+      .delay-400 { animation-delay: 400ms; }
+      .delay-500 { animation-delay: 500ms; }
+      .delay-600 { animation-delay: 600ms; }
+      .delay-700 { animation-delay: 700ms; }
+
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+        "react/": "https://esm.sh/react@18.2.0/",
+        "react": "https://esm.sh/react@18.2.0",
+        "@google/genai": "https://esm.sh/@google/genai@0.12.0"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>
