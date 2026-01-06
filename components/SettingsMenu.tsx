@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { useSettings } from '../contexts/SettingsContext';
+import { useAudio } from '../contexts/AudioContext';
 import { ControlScheme, Language, Screen } from '../types';
 import ToggleSwitch from './common/ToggleSwitch';
 import SegmentedControl from './common/SegmentedControl';
@@ -16,10 +17,22 @@ interface SettingsMenuProps {
 
 const SettingsMenu: React.FC<SettingsMenuProps> = ({ goBack, navigateTo }) => {
   const { settings, setSettings } = useSettings();
+  const audio = useAudio();
 
   const handleSettingChange = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
+    audio.play('uiToggle');
     setSettings(prev => ({ ...prev, [key]: value }));
   };
+
+  const handleBack = () => {
+      audio.play('uiBack');
+      navigateTo('main-menu');
+  }
+
+  const handleSave = () => {
+      audio.play('uiClick');
+      goBack();
+  }
   
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden bg-[var(--color-background)]">
@@ -134,13 +147,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ goBack, navigateTo }) => {
         {/* Action Buttons */}
         <div className="flex items-center justify-between mt-12 pt-6 border-t border-white/10">
           <button 
-            onClick={() => navigateTo('main-menu')}
+            onClick={handleBack}
             className="font-orbitron uppercase text-xs font-bold tracking-wider px-6 py-3 bg-transparent border border-stone-600 text-stone-400 hover:bg-stone-800 hover:text-white transition-all duration-300"
           >
             &lt; Return to Hub
           </button>
           <button 
-            onClick={goBack}
+            onClick={handleSave}
             className="font-orbitron uppercase text-sm font-bold tracking-wider px-10 py-3 bg-[var(--color-primary-magenta)] text-white shadow-[0_0_20px_rgba(255,0,60,0.4)] hover:bg-[var(--color-primary-magenta)] hover:shadow-[0_0_30px_rgba(255,0,60,0.6)] transition-all duration-300 clip-corner-4"
           >
             Save & Execute

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { AudioProvider } from './contexts/AudioContext';
 import LoadingScreen from './components/LoadingScreen';
 import MainMenu from './components/MainMenu';
 import SettingsMenu from './components/SettingsMenu';
@@ -24,6 +25,7 @@ const App: React.FC = () => {
   
   // Game Configuration State
   const [gameConfig, setGameConfig] = useState<GameConfig>({ mode: 'campaign' });
+  const [gameKey, setGameKey] = useState(0);
 
   // Chatbot state lifted to App component
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
@@ -40,6 +42,12 @@ const App: React.FC = () => {
   }, []);
 
   const navigateTo = useCallback((screen: Screen) => {
+    // Special case for restarting the game
+    if (screen === 'game' && currentScreen === 'game') {
+      setGameKey(prev => prev + 1);
+      return;
+    }
+
     if (screen === currentScreen) return;
     
     // Store the screen we came from if we're going to the settings page
@@ -113,7 +121,7 @@ const App: React.FC = () => {
           />
         );
       case 'game':
-        return <GameScreen navigateTo={navigateTo} config={gameConfig} />;
+        return <GameScreen key={`game-${gameKey}`} navigateTo={navigateTo} config={gameConfig} />;
       default:
         return <MainMenu navigateTo={navigateTo} />;
     }
@@ -121,42 +129,44 @@ const App: React.FC = () => {
 
   return (
     <SettingsProvider>
-      <div className="relative min-h-screen bg-stone-950 text-stone-100 overflow-hidden">
-        {/* Custom Universal Cursor */}
-        <CustomCursor />
+      <AudioProvider>
+        <div className="relative min-h-screen bg-stone-950 text-stone-100 overflow-hidden">
+          {/* Custom Universal Cursor */}
+          <CustomCursor />
 
-        {/* Background futuristic grid */}
-        <div className="absolute inset-0 z-0 bg-transparent bg-[linear-gradient(to_right,rgba(0,224,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,224,255,0.04)_1px,transparent_1px)] bg-[size:30px_30px]"></div>
-        <div className="absolute inset-0 z-1 bg-gradient-to-b from-transparent via-black/50 to-black/90"></div>
-        
-        {/* Scanlines effect */}
-        <div className="absolute inset-0 z-2 scanlines pointer-events-none"></div>
+          {/* Background futuristic grid */}
+          <div className="absolute inset-0 z-0 bg-transparent bg-[linear-gradient(to_right,rgba(0,224,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,224,255,0.04)_1px,transparent_1px)] bg-[size:30px_30px]"></div>
+          <div className="absolute inset-0 z-1 bg-gradient-to-b from-transparent via-black/50 to-black/90"></div>
+          
+          {/* Scanlines effect */}
+          <div className="absolute inset-0 z-2 scanlines pointer-events-none"></div>
 
-        <div className="relative z-10 screen-transition-wrapper">
-          {prevScreenForAnimation && (
-            <div key={prevScreenForAnimation} className="screen-container out">
-              {renderScreen(prevScreenForAnimation)}
+          <div className="relative z-10 screen-transition-wrapper">
+            {prevScreenForAnimation && (
+              <div key={prevScreenForAnimation} className="screen-container out">
+                {renderScreen(prevScreenForAnimation)}
+              </div>
+            )}
+            <div key={currentScreen} className="screen-container in">
+              {renderScreen(currentScreen)}
             </div>
-          )}
-          <div key={currentScreen} className="screen-container in">
-            {renderScreen(currentScreen)}
           </div>
-        </div>
 
-        {/* Chatbot */}
-        <ChatbotToggleButton 
-          onClick={() => setIsChatbotOpen(true)} 
-          isVisible={currentScreen !== 'game'} 
-        />
-        {isChatbotOpen && (
-          <Chatbot 
-            messages={chatMessages}
-            isLoading={isChatbotLoading}
-            onSend={handleSendMessage}
-            onClose={() => setIsChatbotOpen(false)} 
+          {/* Chatbot */}
+          <ChatbotToggleButton 
+            onClick={() => setIsChatbotOpen(true)} 
+            isVisible={currentScreen !== 'game'} 
           />
-        )}
-      </div>
+          {isChatbotOpen && (
+            <Chatbot 
+              messages={chatMessages}
+              isLoading={isChatbotLoading}
+              onSend={handleSendMessage}
+              onClose={() => setIsChatbotOpen(false)} 
+            />
+          )}
+        </div>
+      </AudioProvider>
     </SettingsProvider>
   );
 };

@@ -24,6 +24,7 @@ export interface DuelConfig {
   opponentId: string;
   opponentType: 'tank' | 'boss';
   tier?: 'basic' | 'intermediate';
+  bossType?: 'goliath' | 'viper' | 'sentinel';
   opponentName: string;
 }
 
@@ -65,6 +66,7 @@ export interface Projectile {
   ownerId: string;
   position: Vector;
   angle: number;
+  velocity: Vector; // Added explicit velocity for better physics
   size: { width: number; height: number };
   isBarrage?: boolean;
   isHoming?: boolean;
@@ -74,6 +76,7 @@ export interface Projectile {
   isFrozen?: boolean;
   isChronoShard?: boolean;
   isBossOrb?: boolean;
+  color?: string;
 }
 
 export type PowerUpType = 'dualCannon' | 'shield' | 'regensule' | 'reflectorField' | 'lifeLeech' | 'homingMissiles';
@@ -82,11 +85,12 @@ export interface PowerUp {
   id: string;
   type: PowerUpType;
   position: Vector;
+  spawnTime: number; // For floating animations
 }
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -94,6 +98,7 @@ export interface Animation {
   color?: string;
   width?: number;
   height?: number;
+  opacity?: number;
 }
 
 export type AbilityId = 'overdrive' | 'cyberBeam' | 'barrage' | 'chronoBubble' | 'toxicRounds' | 'timeStop';
@@ -136,7 +141,7 @@ export interface Tank {
   id: string;
   name: string;
   type: 'player' | 'enemy';
-  status: 'spawning' | 'active' | 'dying';
+  status: 'spawning' | 'active' | 'dying' | 'dead';
   tier?: 'basic' | 'intermediate';
   spawnTime?: number;
   position: Vector;
@@ -173,11 +178,12 @@ export interface Telegraph {
   angle?: number;
   createdAt: number;
   duration: number;
+  color?: string;
 }
 
 export interface EffectZone {
   id: string;
-  type: 'chrono';
+  type: 'chrono' | 'poison';
   position: Vector;
   radius: number;
   createdAt: number;
@@ -188,9 +194,10 @@ export interface Minion {
   id: string;
   position: Vector;
   angle: number; // Gun angle
+  size: { width: number; height: number };
   health: number;
   maxHealth: number;
-  status: 'spawning' | 'active' | 'dying';
+  status: 'spawning' | 'active' | 'dying' | 'dead';
   spawnTime: number;
   deathTime?: number;
   lastHitTime?: number;
@@ -201,31 +208,36 @@ export interface Minion {
 export interface Boss {
   id: string;
   name: string;
+  bossType: 'goliath' | 'viper' | 'sentinel';
   position: Vector;
-  angle?: number;
+  velocity: Vector; // Added for movement physics
+  angle: number; // Body angle
   patrolTarget?: Vector;
   size: { width: number; height: number };
   health: number;
   maxHealth: number;
   turretAngle: number;
-  status: 'spawning' | 'active' | 'dying';
+  status: 'spawning' | 'active' | 'dying' | 'dead';
   spawnTime?: number;
   deathTime?: number;
   color: string;
   lastHitTime?: number;
   hasUsedLastStand?: boolean;
   statusEffects?: StatusEffect[];
+  shieldSegments?: { angle: number, health: number, maxHealth: number, active: boolean }[]; // For Sentinel
   attackState: {
-    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'multiLane' | 'xPattern' | 'lastStand' | 'summonMinions';
-    phase: 'idle' | 'telegraphing' | 'attacking';
+    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'lastStand' | 'summonMinions' | 'dash' | 'poisonNova' | 'shieldBash';
+    phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering';
     phaseStartTime: number;
     attackData?: {
       telegraphDuration?: number;
       attackDuration?: number;
+      recoveryDuration?: number;
       targets?: Vector[];
       sweepAngleStart?: number;
       attackOrigin?: Vector;
       attackAngle?: number;
+      dashTarget?: Vector;
     };
   };
 }
@@ -244,4 +256,21 @@ export interface DamageIndicator {
     angle: number; // angle from player to damage source
     createdAt: number;
     duration: number;
+}
+
+// Minimal state for the React Render loop (UI only)
+export interface UIState {
+    playerHealth: number;
+    playerMaxHealth: number;
+    playerShield: number;
+    playerScore: number;
+    playerKills: number;
+    wave: number;
+    enemiesRemaining: number;
+    bossHealth?: number;
+    bossMaxHealth?: number;
+    bossName?: string;
+    gameOver: boolean;
+    duelWon: boolean;
+    abilities: Ability[];
 }

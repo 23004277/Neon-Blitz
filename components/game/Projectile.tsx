@@ -1,1 +1,1 @@
-export {};
+// Logic moved to canvasRenderer.ts and GameScreen.tsx

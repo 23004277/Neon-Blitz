@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface CyberButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
@@ -14,8 +15,11 @@ const CyberButton: React.FC<CyberButtonProps> = ({
   size = 'md',
   icon,
   className = '', 
+  onClick,
+  onMouseEnter,
   ...props 
 }) => {
+  const audio = useAudio();
   
   const baseClasses = `
     relative group font-orbitron font-bold uppercase tracking-wider 
@@ -50,9 +54,21 @@ const CyberButton: React.FC<CyberButtonProps> = ({
     `
   };
 
+  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+      audio.play('uiHover');
+      if (onMouseEnter) onMouseEnter(e);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      audio.play('uiClick');
+      if (onClick) onClick(e);
+  };
+
   return (
     <button 
       className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className}`} 
+      onMouseEnter={handleMouseEnter}
+      onClick={handleClick}
       {...props}
     >
       {/* Background slide effect */}

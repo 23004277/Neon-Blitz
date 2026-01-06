@@ -1,1 +1,1 @@
-export {};
+// Logic moved to GameScreen.tsx HUD

@@ -1,1 +1,1 @@
-export {};
+// File removed / deprecated in favor of components/game/GameScreen.tsx
