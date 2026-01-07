@@ -1,7 +1,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { Screen } from '../types';
+import type { Screen, Tank } from '../types';
 import { useAudio } from '../contexts/AudioContext';
+import { drawTank } from './game/canvasRenderer';
 
 interface MainMenuProps {
   navigateTo: (screen: Screen) => void;
@@ -9,6 +10,7 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ navigateTo }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeItem, setActiveItem] = useState<number | null>(null);
   const audio = useAudio();
 
@@ -17,6 +19,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ navigateTo }) => {
       audio.setMusicState('menu');
   }, [audio]);
 
+  // Mouse tracking for perspective effect
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -36,6 +39,64 @@ const MainMenu: React.FC<MainMenuProps> = ({ navigateTo }) => {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Canvas Animation Loop for Tank Preview
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    
+    // Preview Tank State
+    const tank: Tank = {
+        id: 'preview_tank',
+        name: 'VECTOR_01',
+        type: 'player',
+        status: 'active',
+        position: { x: 0, y: 0 }, // We translate context to center
+        velocity: { x: 0, y: 0 },
+        angle: -90,
+        turretAngle: -90,
+        size: { width: 40, height: 40 },
+        health: 10,
+        maxHealth: 10,
+        color: '#00F0FF',
+        score: 0,
+        kills: 0,
+        deaths: 0
+    };
+
+    const render = () => {
+        const now = Date.now();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Animation Logic
+        // Slowly rotate body
+        tank.angle = -90 + Math.sin(now * 0.0005) * 5;
+        // Scan turret
+        tank.turretAngle = -90 + Math.sin(now * 0.0015) * 45;
+
+        // Draw
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(4, 4); // Scale up for preview visibility
+        
+        // Draw the tank using the shared game renderer
+        drawTank(ctx, tank, now, [], false);
+        
+        ctx.restore();
+
+        animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+        cancelAnimationFrame(animationFrameId);
     };
   }, []);
 
@@ -114,12 +175,26 @@ const MainMenu: React.FC<MainMenuProps> = ({ navigateTo }) => {
                  <div className="absolute inset-0 border border-cyan-500/20 rounded-full animate-[spin_20s_linear_infinite]" />
                  <div className="absolute inset-10 border border-dashed border-cyan-500/30 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
                  
-                 {/* Vector Tank Representation */}
-                 <svg viewBox="0 0 200 200" className="w-96 h-96 drop-shadow-[0_0_20px_rgba(6,182,212,0.4)]">
-                    <path d="M60,60 L140,60 L150,100 L140,140 L60,140 L50,100 Z" fill="none" stroke="#06b6d4" strokeWidth="2" />
-                    <circle cx="100" cy="100" r="30" fill="none" stroke="#06b6d4" strokeWidth="2" />
-                    <line x1="100" y1="100" x2="100" y2="40" stroke="#06b6d4" strokeWidth="4" />
-                 </svg>
+                 {/* Canvas Tank Representation */}
+                 <canvas 
+                    ref={canvasRef} 
+                    width={600} 
+                    height={600} 
+                    className="relative z-10 w-full h-full drop-shadow-[0_0_30px_rgba(6,182,212,0.3)]"
+                 />
+                 
+                 {/* Schematic Overlay Text */}
+                 <div className="absolute top-1/4 right-10 text-right pointer-events-none opacity-60">
+                    <div className="text-[10px] font-mono text-cyan-500 mb-1">CHASSIS: MK-IV HOVER</div>
+                    <div className="h-px w-24 bg-cyan-900 ml-auto mb-2"></div>
+                    <div className="text-[10px] font-mono text-cyan-300">ARMOR: COMPOSITE</div>
+                 </div>
+                 
+                 <div className="absolute bottom-1/4 left-10 text-left pointer-events-none opacity-60">
+                    <div className="text-[10px] font-mono text-cyan-500 mb-1">WEAPON: RAIL DRIVER</div>
+                    <div className="h-px w-24 bg-cyan-900 mb-2"></div>
+                    <div className="text-[10px] font-mono text-cyan-300">OUTPUT: 450MW</div>
+                 </div>
              </div>
         </div>
       </div>

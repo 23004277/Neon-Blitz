@@ -10,7 +10,7 @@ interface AbilityCardProps {
 const ABILITY_COLORS: Record<string, { primary: string; secondary: string; glow: string }> = {
   overdrive: { primary: '#fbbf24', secondary: '#f59e0b', glow: 'rgba(251, 191, 36, 0.6)' }, // Amber
   cyberBeam: { primary: '#d946ef', secondary: '#c026d3', glow: 'rgba(217, 70, 239, 0.6)' }, // Fuchsia
-  chronoBubble: { primary: '#3b82f6', secondary: '#2563eb', glow: 'rgba(59, 130, 246, 0.6)' }, // Blue
+  missileBarrage: { primary: '#ef4444', secondary: '#b91c1c', glow: 'rgba(239, 68, 68, 0.6)' }, // Red
   barrage: { primary: '#f97316', secondary: '#ea580c', glow: 'rgba(249, 115, 22, 0.6)' }, // Orange
   toxicRounds: { primary: '#84cc16', secondary: '#65a30d', glow: 'rgba(132, 204, 22, 0.6)' }, // Lime
   timeStop: { primary: '#06b6d4', secondary: '#0891b2', glow: 'rgba(6, 182, 212, 0.6)' } // Cyan
@@ -31,10 +31,11 @@ const AbilityIcon: React.FC<{ name: string; className?: string }> = ({ name, cla
       </svg>
     );
   }
-  if (name === 'Chrono Bubble') {
+  if (name === 'Missile Barrage') {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+           <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
+           <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1.001A3.75 3.75 0 0012 18z" />
         </svg>
     );
   }
@@ -79,7 +80,8 @@ const AbilityCard: React.FC<AbilityCardProps> = ({ ability, index = 0 }) => {
         currentDuration = 12000;
         currentCooldown = 15000;
     }
-    const chargeTime = (name === 'Cyber Beam') ? 4000 : (chargeDuration || 2000);
+    
+    const chargeTime = chargeDuration || 2000;
 
     if (state === 'ready') return 0;
     if (state === 'active') {

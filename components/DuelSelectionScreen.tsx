@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
-import { Screen, GameConfig, DuelConfig } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Screen, GameConfig, DuelConfig, Tank, Boss } from '../types';
 import TankIcon from './game/TankIcon';
 import CyberButton from './common/CyberButton';
+import { drawTank, drawBoss, drawGrid } from './game/canvasRenderer';
 
 interface DuelSelectionScreenProps {
   navigateTo: (screen: Screen) => void;
@@ -25,72 +26,133 @@ const opponents: DuelConfig[] = [
   { 
     opponentId: 'goliath-prime', 
     opponentType: 'boss', 
+    bossType: 'goliath',
     opponentName: 'Goliath Prime',
   }
 ];
 
-// Simple Radar Chart Component
-const RadarChart = ({ stats, color }: { stats: {atk: number, def: number, spd: number}, color: string }) => {
-    const size = 160;
-    const center = size / 2;
-    const radius = size * 0.4;
-    
-    // Normalize stats 0-100 to 0-1 scaling factor
-    const points = [
-        stats.atk / 100, // Top
-        stats.def / 100, // Bottom Right
-        stats.spd / 100  // Bottom Left
-    ];
-
-    const angles = [ -Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6 ];
-    
-    const getCoords = (r: number, i: number) => ({
-        x: center + r * Math.cos(angles[i]),
-        y: center + r * Math.sin(angles[i])
-    });
-
-    const polygonPoints = points.map((p, i) => {
-        const {x, y} = getCoords(radius * p, i);
-        return `${x},${y}`;
-    }).join(' ');
-
-    const backgroundPoints = angles.map((_, i) => {
-        const {x, y} = getCoords(radius, i);
-        return `${x},${y}`;
-    }).join(' ');
-
-    return (
-        <svg width={size} height={size} className="overflow-visible">
-            {/* Background Triangle */}
-            <polygon points={backgroundPoints} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" />
-            {/* Inner Grid */}
-            {[0.33, 0.66].map(scale => {
-                 const gridPoints = angles.map((_, i) => {
-                    const {x, y} = getCoords(radius * scale, i);
-                    return `${x},${y}`;
-                }).join(' ');
-                return <polygon key={scale} points={gridPoints} fill="none" stroke="rgba(255,255,255,0.1)" strokeDasharray="2 2"/>
-            })}
-            
-            {/* Labels */}
-            <text x={center} y={center - radius - 10} textAnchor="middle" fill="#aaa" fontSize="10" className="font-orbitron">ATK</text>
-            <text x={center + radius} y={center + radius / 2 + 15} textAnchor="middle" fill="#aaa" fontSize="10" className="font-orbitron">DEF</text>
-            <text x={center - radius} y={center + radius / 2 + 15} textAnchor="middle" fill="#aaa" fontSize="10" className="font-orbitron">SPD</text>
-
-            {/* Data Polygon */}
-            <polygon points={polygonPoints} fill={color.replace('text-', 'bg-').replace('border-', 'bg-').replace('var(--color-', '').replace(')', '') + '/30'} stroke={color.includes('cyan') ? '#00F0FF' : color.includes('magenta') ? '#FF003C' : color.includes('orange') ? '#f97316' : '#fff'} strokeWidth="2" fillOpacity="0.4" />
-            
-            {/* Data Points */}
-            {points.map((p, i) => {
-                const {x, y} = getCoords(radius * p, i);
-                return <circle key={i} cx={x} cy={y} r="3" fill="#fff" />
-            })}
-        </svg>
-    );
-};
-
 const DuelSelectionScreen: React.FC<DuelSelectionScreenProps> = ({ navigateTo, setGameConfig }) => {
   const [selectedOpponent, setSelectedOpponent] = useState<DuelConfig>(opponents[0]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Animation Loop for Preview
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationId: number;
+    let rotation = -90; // Start facing up
+    
+    // Create Dummy Entity for rendering
+    const createPreviewEntity = (rot: number): Tank | Boss => {
+        const baseProps = {
+            id: 'preview',
+            position: { x: 0, y: 0 }, // Will translate context
+            velocity: { x: 0, y: 0 },
+            angle: rot,
+            turretAngle: rot + Math.sin(Date.now() * 0.002) * 20, // Idle scan
+            status: 'active' as const,
+            health: 100,
+            maxHealth: 100,
+            color: '#fff',
+            spawnTime: 0
+        };
+
+        if (selectedOpponent.opponentType === 'boss') {
+            return {
+                ...baseProps,
+                name: selectedOpponent.opponentName,
+                bossType: selectedOpponent.bossType || 'goliath',
+                size: { width: 110, height: 110 },
+                color: '#ef4444',
+                attackState: { currentAttack: 'none', phase: 'idle', phaseStartTime: 0 },
+                hasUsedLastStand: false
+            } as Boss;
+        } else {
+            return {
+                ...baseProps,
+                name: selectedOpponent.opponentName,
+                type: 'enemy',
+                tier: selectedOpponent.tier,
+                size: { width: 40, height: 40 },
+                color: selectedOpponent.tier === 'intermediate' ? '#f97316' : '#FF003C',
+                score: 0, kills: 0, deaths: 0
+            } as Tank;
+        }
+    };
+
+    const render = () => {
+        const now = Date.now();
+        const width = canvas.width;
+        const height = canvas.height;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Draw Hangar Floor (Perspective Grid)
+        ctx.save();
+        ctx.translate(width/2, height/2 + 100);
+        ctx.scale(1, 0.4); // Flatten Y for pseudo-3D floor
+        
+        // Floor Glow
+        const gradient = ctx.createRadialGradient(0, 0, 50, 0, 0, 300);
+        gradient.addColorStop(0, `rgba(${selectedOpponent.opponentType === 'boss' ? '239, 68, 68' : '0, 240, 255'}, 0.2)`);
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, 300, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Floor Grid Lines
+        ctx.strokeStyle = `rgba(${selectedOpponent.opponentType === 'boss' ? '239, 68, 68' : '0, 240, 255'}, 0.3)`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let i=0; i<8; i++) {
+            ctx.beginPath();
+            ctx.arc(0, 0, i * 40, 0, Math.PI*2);
+            ctx.stroke();
+        }
+        // Radial lines
+        for(let i=0; i<12; i++) {
+            const ang = (i / 12) * Math.PI * 2 + (now * 0.0005);
+            ctx.beginPath();
+            ctx.moveTo(0,0);
+            ctx.lineTo(Math.cos(ang) * 300, Math.sin(ang) * 300);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Draw Entity
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        
+        // Scale up
+        const scale = selectedOpponent.opponentType === 'boss' ? 2.5 : 5.0;
+        ctx.scale(scale, scale);
+        
+        // Float animation
+        const floatY = Math.sin(now * 0.002) * 5;
+        ctx.translate(0, floatY);
+
+        rotation += 0.2; // Slow spin
+
+        const entity = createPreviewEntity(rotation);
+
+        if (selectedOpponent.opponentType === 'boss') {
+            drawBoss(ctx, entity as Boss, now, false);
+        } else {
+            drawTank(ctx, entity as Tank, now, [], false);
+        }
+
+        ctx.restore();
+
+        animationId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => cancelAnimationFrame(animationId);
+  }, [selectedOpponent]);
 
   const handleStartDuel = () => {
     setGameConfig({ mode: 'duel', duelConfig: selectedOpponent });
@@ -98,74 +160,88 @@ const DuelSelectionScreen: React.FC<DuelSelectionScreenProps> = ({ navigateTo, s
   };
 
   const getStats = (opp: DuelConfig) => {
-      if (opp.opponentType === 'boss') return { atk: 95, def: 90, spd: 20, diff: 'EXTREME' };
-      if (opp.tier === 'intermediate') return { atk: 70, def: 80, spd: 40, diff: 'HARD' };
-      return { atk: 40, def: 30, spd: 90, diff: 'NORMAL' };
+      if (opp.opponentType === 'boss') return { atk: 95, def: 90, spd: 20, diff: 'EXTREME', desc: 'Heavy Siege Dreadnought' };
+      if (opp.tier === 'intermediate') return { atk: 70, def: 80, spd: 40, diff: 'HARD', desc: 'Armored Assault Unit' };
+      return { atk: 40, def: 30, spd: 90, diff: 'NORMAL', desc: 'Reconnaissance Scout' };
   }
 
-  const currentStats = getStats(selectedOpponent);
-  const themeColor = selectedOpponent.opponentType === 'boss' ? 'text-[var(--color-primary-magenta)]' : 
-                     selectedOpponent.tier === 'intermediate' ? 'text-orange-500' : 'text-[var(--color-primary-cyan)]';
+  const stats = getStats(selectedOpponent);
+  const themeColor = selectedOpponent.opponentType === 'boss' ? 'text-red-500' : 
+                     selectedOpponent.tier === 'intermediate' ? 'text-orange-500' : 'text-cyan-400';
+  const themeBorder = selectedOpponent.opponentType === 'boss' ? 'border-red-500' : 
+                      selectedOpponent.tier === 'intermediate' ? 'border-orange-500' : 'border-cyan-400';
+  const themeBg = selectedOpponent.opponentType === 'boss' ? 'bg-red-500' : 
+                  selectedOpponent.tier === 'intermediate' ? 'bg-orange-500' : 'bg-cyan-400';
 
   return (
-    <div className="flex flex-col min-h-screen p-4 md:p-8 relative overflow-hidden bg-[var(--color-background)]">
-       {/* Background Grid */}
+    <div className="flex flex-col h-screen p-4 overflow-hidden bg-[var(--color-background)]">
+       {/* Background */}
        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-         <div className="absolute right-0 top-0 w-2/3 h-full bg-gradient-to-l from-[var(--color-primary-cyan)]/10 to-transparent" />
          <div className="grid-bg" />
          <div className="bg-tech-dots absolute inset-0 opacity-30" />
        </div>
+       <div className="scanlines absolute inset-0 z-50 pointer-events-none opacity-20" />
 
-      {/* Header */}
-      <div className="relative z-10 flex justify-between items-end mb-8 border-b border-[var(--color-border)] pb-4 animate-slide-up">
+      {/* Header - Compact */}
+      <div className="relative z-10 flex flex-shrink-0 justify-between items-end mb-4 border-b border-[var(--color-border)] pb-2 animate-slide-up">
         <div>
-            <h1 className="font-orbitron text-4xl md:text-6xl font-black uppercase text-[var(--color-text-light)]">
-            Duel <span className="text-[var(--color-primary-cyan)]">Sim</span>
+            <h1 className="font-orbitron text-4xl font-black uppercase text-[var(--color-text-light)]">
+            Sim <span className="text-[var(--color-primary-cyan)]">Duel</span>
             </h1>
-            <p className="font-rajdhani text-[var(--color-text-dim)] tracking-widest text-sm mt-1">SELECT YOUR OPPONENT // INITIATE COMBAT</p>
+            <p className="font-rajdhani text-[var(--color-text-dim)] tracking-widest text-xs mt-1">SELECT OPPONENT // INITIATE COMBAT</p>
         </div>
-        <div className="hidden md:block text-right font-orbitron text-xs text-[var(--color-text-dim)] border-r-2 border-[var(--color-primary-cyan)] pr-4">
+        <div className="hidden md:block text-right font-orbitron text-[10px] text-[var(--color-text-dim)] border-r-2 border-[var(--color-primary-cyan)] pr-4">
             SYSTEM_ID: DUEL_CORE_V1<br/>
             STATUS: WAITING_FOR_INPUT
         </div>
       </div>
 
-      <div className="relative z-10 flex-grow grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
+      {/* Main Grid - Flexible Height */}
+      <div className="relative z-10 flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 pb-2">
         
-        {/* Left Column: List */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
+        {/* Left Column: Opponent List */}
+        <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto pr-2 custom-scrollbar">
           {opponents.map((opponent, index) => {
             const isSelected = selectedOpponent.opponentId === opponent.opponentId;
+            const isBoss = opponent.opponentType === 'boss';
+            
             return (
               <button
                 key={opponent.opponentId}
                 onClick={() => setSelectedOpponent(opponent)}
-                className={`group relative flex items-center p-4 border transition-all duration-300 overflow-hidden clip-corner-4 text-left animate-slide-up
+                className={`group relative flex items-center p-3 border transition-all duration-300 overflow-hidden clip-corner-4 text-left animate-slide-up flex-shrink-0
                   ${isSelected 
-                    ? 'bg-[var(--color-primary-cyan)]/10 border-[var(--color-primary-cyan)] shadow-[inset_0_0_20px_rgba(0,240,255,0.2)]' 
-                    : 'bg-black/60 border-[var(--color-border)] hover:bg-white/5 hover:border-[var(--color-text-light)]'
+                    ? `bg-white/5 ${isBoss ? 'border-red-500 shadow-[inset_0_0_20px_rgba(239,68,68,0.2)]' : 'border-cyan-400 shadow-[inset_0_0_20px_rgba(6,182,212,0.2)]'}` 
+                    : 'bg-black/60 border-stone-800 hover:border-stone-600'
                   }
                 `}
-                style={{ animationDelay: `${index * 100 + 100}ms` }}
+                style={{ animationDelay: `${index * 100}ms` }}
               >
-                {/* Active Indicator */}
-                <div className={`absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 ${isSelected ? 'bg-[var(--color-primary-cyan)]' : 'bg-transparent group-hover:bg-[var(--color-border)]'}`} />
+                {/* Selection Marker */}
+                {isSelected && (
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${isBoss ? 'bg-red-500' : 'bg-cyan-400'}`} />
+                )}
                 
-                <div className="flex-shrink-0 mr-4">
-                    <div className={`w-12 h-12 flex items-center justify-center bg-black/80 border border-[var(--color-border)] ${isSelected ? 'box-glow-cyan' : ''}`}>
-                       <TankIcon color={isSelected ? 'var(--color-primary-cyan)' : '#555'} className="w-8 h-8" />
+                <div className="flex-shrink-0 mr-3">
+                    <div className={`w-10 h-10 flex items-center justify-center border bg-black/50 ${isSelected ? (isBoss ? 'border-red-500' : 'border-cyan-400') : 'border-stone-700'}`}>
+                       <TankIcon 
+                          type={isBoss ? 'boss' : 'enemy'} 
+                          tier={opponent.tier}
+                          bossType={opponent.bossType}
+                          color={isBoss ? '#ef4444' : opponent.tier === 'intermediate' ? '#f97316' : '#FF003C'} 
+                          className="w-6 h-6" 
+                       />
                     </div>
                 </div>
 
                 <div>
-                    <h3 className={`font-orbitron text-lg font-bold uppercase tracking-wider ${isSelected ? 'text-[var(--color-text-light)] text-glow-cyan' : 'text-[var(--color-text-dim)] group-hover:text-[var(--color-text-light)]'}`}>
+                    <h3 className={`font-orbitron text-base font-bold uppercase tracking-wider ${isSelected ? 'text-white' : 'text-stone-500 group-hover:text-stone-300'}`}>
                     {opponent.opponentName}
                     </h3>
                     <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${opponent.opponentType === 'boss' ? 'bg-red-500' : 'bg-green-500'}`}></span>
-                        <p className="font-rajdhani text-xs text-[var(--color-text-dim)] uppercase">
-                        {opponent.opponentType === 'boss' ? 'Class: Dreadnought' : `Class: Standard (T${opponent.tier === 'intermediate' ? '2' : '1'})`}
-                        </p>
+                        <span className={`px-1 py-0.5 text-[8px] font-bold font-mono uppercase border ${isBoss ? 'border-red-500 text-red-500' : 'border-stone-600 text-stone-500'}`}>
+                            {isBoss ? 'DREADNOUGHT' : `TIER ${opponent.tier === 'intermediate' ? '2' : '1'}`}
+                        </span>
                     </div>
                 </div>
               </button>
@@ -173,98 +249,91 @@ const DuelSelectionScreen: React.FC<DuelSelectionScreenProps> = ({ navigateTo, s
           })}
         </div>
 
-        {/* Right Column: Details Panel */}
-        <div className="lg:col-span-8 flex flex-col h-full animate-slide-up delay-400">
-            <div className="cyber-panel flex-grow p-8 relative flex flex-col clip-corner-2 bg-black/80">
-                {/* Background Tech Elements */}
-                <div className="absolute top-4 right-4 text-[var(--color-primary-cyan)] opacity-20">
-                    <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-                        <circle cx="50" cy="50" r="48" stroke="currentColor" strokeWidth="1" strokeDasharray="10 5" />
-                        <circle cx="50" cy="50" r="30" stroke="currentColor" strokeWidth="1" />
-                        <path d="M50 0 L50 100 M0 50 L100 50" stroke="currentColor" strokeWidth="0.5" />
-                    </svg>
+        {/* Right Column: Visualizer & Details */}
+        <div className="lg:col-span-8 flex flex-col h-full animate-slide-up delay-200 min-h-0">
+            {/* The "Hangar" Viewport */}
+            <div className={`relative flex-1 bg-black/80 border-2 ${themeBorder} clip-corner-2 overflow-hidden flex flex-col min-h-0`}>
+                
+                {/* Decorative UI Overlay */}
+                <div className="absolute top-4 left-4 z-20 pointer-events-none">
+                     <div className={`text-4xl font-black font-orbitron uppercase tracking-tighter opacity-80 ${themeColor}`}>
+                         {selectedOpponent.opponentName}
+                     </div>
+                     <div className="text-xs font-rajdhani text-stone-400 tracking-[0.3em] uppercase mt-1">
+                         {stats.desc}
+                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-8 items-start mb-8 h-full">
-                    {/* Visualizer Column */}
-                    <div className="flex flex-col items-center gap-6 w-full md:w-1/2">
-                        <div className="relative w-64 h-64 flex-shrink-0 flex items-center justify-center bg-black/50 border border-[var(--color-border)] clip-hex box-glow-cyan">
-                            {selectedOpponent.opponentType === 'boss' ? (
-                                <div className="text-8xl animate-pulse text-[var(--color-primary-magenta)]">☠</div> 
-                            ) : (
-                                <TankIcon 
-                                    color={selectedOpponent.tier === 'intermediate' ? '#f97316' : '#F000B8'} 
-                                    className="w-40 h-40 drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]" 
-                                />
-                            )}
-                            {/* Scanline overlay on image */}
-                            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--color-primary-cyan)]/10 to-transparent animate-pulse pointer-events-none" style={{backgroundSize: '100% 4px'}} />
-                        </div>
-                        
-                        {/* Radar Chart */}
-                        <div className="mt-4">
-                            <RadarChart stats={currentStats} color={themeColor} />
-                        </div>
+                <div className="absolute top-4 right-4 z-20 text-right pointer-events-none">
+                    <div className={`text-xl font-bold font-orbitron ${themeColor}`}>
+                        THREAT: {stats.diff}
                     </div>
-
-                    {/* Stats & Info Column */}
-                    <div className="flex-grow w-full md:w-1/2 flex flex-col justify-center h-full">
-                        <h2 className="font-orbitron text-4xl font-black uppercase text-[var(--color-text-light)] mb-2">
-                            {selectedOpponent.opponentName}
-                        </h2>
-                        <div className="flex gap-2 mb-8">
-                            <span className={`px-2 py-1 border text-xs font-bold font-orbitron uppercase ${selectedOpponent.opponentType === 'boss' ? 'border-[var(--color-primary-magenta)] text-[var(--color-primary-magenta)] bg-[var(--color-primary-magenta)]/10' : 'border-[var(--color-primary-cyan)] text-[var(--color-primary-cyan)] bg-[var(--color-primary-cyan)]/10'}`}>
-                                THREAT: {currentStats.diff}
-                            </span>
-                            <span className="px-2 py-1 bg-stone-800 border border-stone-600 text-stone-400 text-xs font-bold font-orbitron uppercase">
-                                UNIT_TYPE: {selectedOpponent.opponentType.toUpperCase()}
-                            </span>
-                        </div>
-
-                        <div className="space-y-6 font-rajdhani w-full bg-black/40 p-6 border border-[var(--color-border)]/30 rounded-sm">
-                            <h4 className="text-[var(--color-text-dim)] uppercase tracking-widest text-sm border-b border-gray-700 pb-2 mb-4">Tactical Analysis</h4>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <div className="text-xs text-gray-500 uppercase">Primary Weapon</div>
-                                    <div className="text-lg text-white font-orbitron">
-                                        {selectedOpponent.opponentType === 'boss' ? 'Omni-Cannon' : 'Plasma Repeater'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-xs text-gray-500 uppercase">Armor Composition</div>
-                                    <div className="text-lg text-white font-orbitron">
-                                        {selectedOpponent.tier === 'intermediate' ? 'Composite' : 'Standard Plating'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-xs text-gray-500 uppercase">Speed Rating</div>
-                                    <div className="text-lg text-white font-orbitron">{currentStats.spd}/100</div>
-                                </div>
-                                <div>
-                                    <div className="text-xs text-gray-500 uppercase">Weakness</div>
-                                    <div className="text-lg text-white font-orbitron">
-                                        {selectedOpponent.opponentType === 'boss' ? 'Cooling Vents' : 'Rear Armor'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div className="flex items-center justify-end gap-1 mt-1">
+                        {Array.from({length: 5}).map((_, i) => {
+                             // Calc threat level 1-5
+                             const level = stats.diff === 'EXTREME' ? 5 : stats.diff === 'HARD' ? 3 : 1;
+                             return (
+                                 <div key={i} className={`w-1.5 h-3 transform -skew-x-12 ${i < level ? themeBg : 'bg-stone-800'}`} />
+                             )
+                        })}
                     </div>
                 </div>
 
-                <div className="mt-auto flex justify-end gap-4 border-t border-[var(--color-border)] pt-6">
-                    <CyberButton onClick={() => navigateTo('main-menu')} variant="secondary">
-                        Abort
-                    </CyberButton>
-                    <CyberButton onClick={handleStartDuel} variant="primary" size="lg" icon={<span>⚔</span>}>
-                        Initialize Duel
-                    </CyberButton>
+                {/* Canvas Container */}
+                <div className="relative flex-1 w-full flex items-center justify-center overflow-hidden bg-black/20">
+                    <canvas 
+                        ref={canvasRef} 
+                        width={800} 
+                        height={500}
+                        className="w-full h-full object-contain relative z-10"
+                    />
+                    
+                    {/* Background Grid Accent */}
+                    <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.03),transparent_70%)] pointer-events-none" />
                 </div>
+                
+                {/* Bottom Stats Panel - Compact */}
+                <div className="relative z-20 bg-black/90 border-t border-white/10 p-4 grid grid-cols-3 gap-4 backdrop-blur-md flex-shrink-0">
+                    <StatBar label="FIREPOWER" value={stats.atk} color={themeBg} />
+                    <StatBar label="ARMOR" value={stats.def} color={themeBg} />
+                    <StatBar label="SPEED" value={stats.spd} color={themeBg} />
+                </div>
+            </div>
+
+            {/* Actions - Compact */}
+            <div className="mt-3 flex justify-end gap-3 flex-shrink-0">
+                <CyberButton onClick={() => navigateTo('main-menu')} variant="secondary" size="sm">
+                    Return to Hub
+                </CyberButton>
+                <CyberButton onClick={handleStartDuel} variant="primary" size="md" icon={<span>⚔</span>} className={selectedOpponent.opponentType === 'boss' ? '!border-red-500 !text-red-500 hover:!bg-red-500 hover:!text-white' : ''}>
+                    INITIALIZE
+                </CyberButton>
             </div>
         </div>
       </div>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
+      `}</style>
     </div>
   );
 };
+
+const StatBar = ({ label, value, color }: { label: string, value: number, color: string }) => (
+    <div className="flex flex-col gap-1">
+        <div className="flex justify-between items-end">
+            <span className="text-[10px] font-bold font-orbitron text-stone-500 tracking-widest">{label}</span>
+            <span className="text-sm font-bold font-orbitron text-white leading-none">{value}%</span>
+        </div>
+        <div className="h-1.5 w-full bg-stone-900 skew-x-[-12deg] overflow-hidden">
+            <div 
+                className={`h-full ${color} transition-all duration-1000 ease-out`} 
+                style={{ width: `${value}%`, boxShadow: '0 0 10px currentColor' }} 
+            />
+        </div>
+    </div>
+);
 
 export default DuelSelectionScreen;

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface ChatbotToggleButtonProps {
@@ -6,84 +7,64 @@ interface ChatbotToggleButtonProps {
 }
 
 const ChatbotToggleButton: React.FC<ChatbotToggleButtonProps> = ({ onClick, isVisible }) => {
-  const ariaLabel = 'Open AI assistant';
-
   return (
-    <>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={ariaLabel}
-        aria-haspopup="dialog"
-        className={`group fixed top-1/2 right-0 z-50 flex h-48 w-10 transform items-center justify-center border-y-2 border-l-2 border-[var(--color-border)] bg-black/80 text-[var(--color-text-medium)] shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out will-change-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black
+    <button
+      onClick={onClick}
+      className={`
+        fixed right-0 top-1/2 -translate-y-1/2 z-50
+        group flex flex-col items-center justify-between gap-6 py-6 px-3 h-64
+        bg-black/80 backdrop-blur-md 
+        border-l-2 border-y border-y-transparent border-l-[var(--color-primary-cyan)]/40
+        text-[var(--color-primary-cyan)]
+        transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        hover:border-l-[var(--color-primary-cyan)] hover:bg-[var(--color-primary-cyan)]/5 hover:shadow-[-10px_0_30px_rgba(0,240,255,0.15)]
         ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'}
-        -translate-y-1/2 hover:bg-[var(--color-primary-cyan)]/10 hover:border-[var(--color-border-glow)]`}
-        style={{clipPath: 'polygon(100% 0, 100% 100%, 0 100%, 25% 50%, 0 0)'}}
-      >
-        {/* Glowing Pulse Effect */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-50 transition-opacity duration-300 group-hover:opacity-100"
-          style={{
-            boxShadow: 'inset 0 0 8px var(--color-border-glow), 0 0 12px var(--color-border-glow)',
-          }}
-        />
+      `}
+      style={{
+        clipPath: 'polygon(0 20px, 20px 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 20px))',
+      }}
+      aria-label="Open AI Assistant"
+    >
+      {/* Top Decoration Line */}
+      <div className="w-0.5 h-8 bg-gradient-to-b from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
 
-        {/* Content Container */}
-        <div className="relative flex h-full w-full flex-col items-center justify-between py-4 pl-2">
-          {/* Icon */}
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6 flex-shrink-0 text-cyan-400 transition-all duration-300 group-hover:text-cyan-200 group-hover:drop-shadow-[0_0_4px_var(--color-primary-cyan)]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+      {/* Center Content */}
+      <div className="flex flex-col items-center gap-5 flex-grow justify-center">
+          {/* Icon Container */}
+          <div className="relative group-hover:scale-110 transition-transform duration-300">
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="w-6 h-6 text-[var(--color-primary-cyan)] drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+            >
+                {/* Robot/AI Face Icon */}
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            
+            {/* Status Dot */}
+            <div className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_5px_lime]"></span>
+            </div>
+          </div>
 
           {/* Vertical Text */}
-          <span
-            aria-hidden
-            className="font-orbitron text-sm uppercase tracking-[0.2em] text-cyan-400 transition-colors duration-300 group-hover:text-cyan-200"
+          <div 
+            className="font-orbitron font-bold text-[10px] tracking-[0.25em] uppercase text-[var(--color-text-dim)] group-hover:text-white transition-colors duration-300 whitespace-nowrap"
             style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
           >
-            AI ASSIST
-          </span>
-
-          {/* Indicator Light */}
-          <div className="relative h-5 w-5">
-            <span
-              aria-hidden
-              className="absolute inset-0.5 animate-pulse-slow rounded-full bg-green-500/50"
-            />
-            <span
-              aria-hidden
-              className="absolute inset-1 rounded-full bg-green-400"
-              style={{ boxShadow: '0 0 5px rgba(74, 222, 128, 0.8)' }}
-            />
+            AI Uplink
           </div>
-        </div>
-      </button>
-      <style>{`
-        @keyframes pulse-slow {
-          50% { opacity: 0.6; }
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .animate-pulse-slow { 
-            animation: none !important; 
-          }
-          button {
-            transition: none !important;
-          }
-        }
-      `}</style>
-    </>
+      </div>
+
+      {/* Bottom Decoration Line */}
+      <div className="w-0.5 h-8 bg-gradient-to-t from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+      
+      {/* Hover Slide Effect Backing */}
+      <div className="absolute inset-0 bg-white/5 translate-x-full group-hover:translate-x-0 transition-transform duration-500 ease-out -z-10" />
+    </button>
   );
 };
 

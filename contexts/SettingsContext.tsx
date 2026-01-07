@@ -10,7 +10,7 @@ interface SettingsContextType {
 const defaultSettings: Settings = {
   sound: true,
   music: true,
-  soundVolume: 0.25,
+  soundVolume: 0.5,
   screenShake: true,
   difficulty: Difficulty.Medium,
   controls: ControlScheme.WASD,

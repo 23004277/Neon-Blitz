@@ -1,124 +1,194 @@
 
-import React from 'react';
-import { Tank as TankType } from '../../types';
-import HealthBar from './HealthBar';
+import React, { useMemo } from 'react';
+import { Tank, Boss } from '../../types';
 import TankIcon from './TankIcon';
 
 interface LeaderboardProps {
-  player: TankType;
-  enemies: TankType[];
+  player: Tank;
+  enemies: Tank[];
+  boss: Boss | null;
 }
 
-const Leaderboard: React.FC<LeaderboardProps> = ({ player, enemies }) => {
-  const allTanks = [player, ...enemies];
+type Combatant = {
+  id: string;
+  name: string;
+  type: 'player' | 'enemy' | 'boss';
+  tier?: 'basic' | 'intermediate';
+  bossType?: 'goliath' | 'viper' | 'sentinel';
+  health: number;
+  maxHealth: number;
+  score: number;
+  kills: number;
+  deaths: number;
+  isDead: boolean;
+  color: string;
+};
+
+const Leaderboard: React.FC<LeaderboardProps> = ({ player, enemies, boss }) => {
   
-  // Keep sorting by score for ranking
-  const rankedTanks = [...allTanks].sort((a, b) => b.score - a.score);
+  const combatants = useMemo(() => {
+    const list: Combatant[] = [];
 
-  const arenaTotals = allTanks.reduce(
-    (acc, tank) => {
-      acc.score += tank.score;
-      acc.kills += tank.kills;
-      acc.deaths += tank.deaths;
-      return acc;
-    },
-    { score: 0, kills: 0, deaths: 0 }
-  );
+    // Add Player
+    list.push({
+      id: player.id,
+      name: player.name,
+      type: 'player',
+      health: player.health,
+      maxHealth: player.maxHealth,
+      score: player.score,
+      kills: player.kills,
+      deaths: player.deaths,
+      isDead: player.status === 'dead',
+      color: 'var(--color-primary-cyan)'
+    });
 
-  const KillIcon = () => (
-    <svg className="w-3.5 h-3.5 text-green-400/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 8v8m-4-4h8" />
-    </svg>
-  );
+    // Add Boss
+    if (boss) {
+      list.push({
+        id: boss.id,
+        name: boss.name,
+        type: 'boss',
+        bossType: boss.bossType,
+        health: boss.health,
+        maxHealth: boss.maxHealth,
+        score: Math.max(boss.health * 10, 1000), // Artificial score for boss based on threat
+        kills: 0, // Bosses don't track kills in current type, default 0
+        deaths: boss.status === 'dead' ? 1 : 0,
+        isDead: boss.status === 'dead',
+        color: 'var(--color-primary-magenta)'
+      });
+    }
 
-  const DeathIcon = () => (
-     <svg className="w-3.5 h-3.5 text-red-400/80" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M13.5 0a.5.5 0 0 1 .5.5V1c0 .276-.224.5-.5.5h-2.293L12.146 3.146a.5.5 0 0 1-.708.708L10 2.414V3.5a.5.5 0 0 1-1 0V2.414l-1.438 1.438a.5.5 0 0 1-.708-.708L8.293 1.5H6a.5.5 0 0 1-.5-.5V.5a.5.5 0 0 1 .5.5h7.5ZM2.01 3.064a.5.5 0 0 1 .693-.162l1.64 1.16 1.437-1.437a.5.5 0 0 1 .638-.058l1.454.969 1.453-.969a.5.5 0 0 1 .638.058l1.437 1.437 1.64-1.16a.5.5 0 0 1 .693.162l1.297 1.945a.5.5 0 0 1-.343.832H1.056a.5.5 0 0 1-.343-.832l1.297-1.945Z"/>
-        <path d="M14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM4 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"/>
-        <path d="M2.5 7.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5.5Zm11 0a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5.5Z"/>
-        <path d="M4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5Z"/>
-        <path d="M2.5 12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5.5Zm11 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5.5Z"/>
-    </svg>
-  );
+    // Add Enemies
+    enemies.forEach(e => {
+      list.push({
+        id: e.id,
+        name: e.name,
+        type: 'enemy',
+        tier: e.tier,
+        health: e.health,
+        maxHealth: e.maxHealth,
+        score: e.score,
+        kills: e.kills,
+        deaths: e.deaths,
+        isDead: e.status === 'dead',
+        color: e.color // Use specific entity color
+      });
+    });
+
+    // Sort: Score Desc -> Health Desc -> Name Asc
+    return list.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.health !== a.health) return b.health - a.health;
+      return a.name.localeCompare(b.name);
+    });
+  }, [player, enemies, boss]);
+
+  const totalKills = combatants.reduce((acc, c) => acc + c.kills, 0);
+  const activeHostiles = combatants.filter(c => (c.type === 'enemy' || c.type === 'boss') && !c.isDead).length;
 
   return (
-    <div className="w-full bg-black/70 border-y-2 border-r-2 border-[var(--color-border)] p-4 backdrop-blur-sm z-20 font-rajdhani animate-fade-in-right leaderboard-container box-glow-magenta">
-      <h2 className="font-orbitron text-2xl uppercase text-[var(--color-primary-magenta)] text-glow-magenta mb-4 text-center tracking-widest">
-        COMBATANTS
-      </h2>
-      <ul className="space-y-2 mb-4">
-        {rankedTanks.map((tank, index) => (
-          <li 
-            key={tank.id} 
-            className={`relative flex items-center space-x-3 p-2 transition-all duration-300 border-l-4 group
-            ${
-              tank.type === 'player' 
-                ? 'bg-cyan-900/40 border-[var(--color-primary-cyan)] hover:bg-cyan-900/60' 
-                : 'bg-fuchsia-900/40 border-[var(--color-primary-magenta)] hover:bg-fuchsia-900/60'
-            }`}
-          >
-            <div className="font-orbitron font-bold text-xl text-stone-400 w-6 text-center">{index + 1}</div>
-            <TankIcon color={tank.type === 'player' ? 'var(--color-primary-cyan)' : 'var(--color-primary-magenta)'} className="w-10 h-10 flex-shrink-0" />
-            <div className="flex-grow overflow-hidden">
-              <p className={`font-bold text-lg truncate ${tank.type === 'player' ? 'text-cyan-100' : 'text-fuchsia-100'}`}>
-                  {tank.name}
-              </p>
-              <HealthBar 
-                currentHealth={tank.health} 
-                maxHealth={tank.maxHealth} 
-                color={tank.type === 'player' ? 'var(--color-primary-cyan)' : 'var(--color-primary-magenta)'}
-                shieldHealth={tank.shieldHealth}
-                maxShieldHealth={3}
-              />
-            </div>
-             <div className="flex flex-col items-end justify-center space-y-1 w-12 text-sm font-semibold pr-1">
-                <div className="flex items-center gap-1.5"><span className="text-green-300 font-orbitron">{tank.kills}</span> <KillIcon /></div>
-                <div className="flex items-center gap-1.5"><span className="text-red-300 font-orbitron">{tank.deaths}</span> <DeathIcon /></div>
-            </div>
-            {/* Hover effect */}
-            <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`}/>
-          </li>
-        ))}
-      </ul>
-
-      <div className="border-t-2 border-[var(--color-primary-cyan)]/50 my-4 glowing-divider"></div>
+    <div className="w-80 font-rajdhani overflow-hidden flex flex-col pointer-events-none select-none">
       
-      <h3 className="font-orbitron text-xl uppercase text-[var(--color-primary-cyan)] text-glow-cyan mb-3 text-center tracking-wider">
-        ARENA TOTALS
-      </h3>
-      <div className="flex overflow-hidden border-2 border-[var(--color-primary-cyan)]/50 rounded-md bg-black/50">
-        {[{label: 'SCORE', value: arenaTotals.score, color: 'amber'}, {label: 'KILLS', value: arenaTotals.kills, color: 'green'}, {label: 'DEATHS', value: arenaTotals.deaths, color: 'red'}].map((item, index) => (
-            <div key={item.label} className={`
-                flex-1 p-2 text-center
-                ${index > 0 ? 'border-l-2 border-[var(--color-primary-cyan)]/30' : ''}
-            `}>
-                <p className={`font-rajdhani text-xs font-bold text-${item.color}-400/80 uppercase tracking-widest`}>{item.label}</p>
-                <p className={`font-orbitron text-2xl font-bold text-${item.color}-300 tracking-wider leading-tight truncate text-glow-${item.color}`}>
-                    {item.value}
-                </p>
+      {/* Header */}
+      <div className="bg-black/80 backdrop-blur-md border-t-2 border-l-2 border-[var(--color-primary-cyan)] p-3 flex justify-between items-center clip-corner-top-right">
+        <div>
+          <h2 className="font-orbitron text-lg font-bold text-[var(--color-primary-cyan)] tracking-widest leading-none text-glow-cyan">
+            COMBAT FEED
+          </h2>
+          <span className="text-[10px] text-cyan-400/60 font-mono tracking-widest">SECTOR 7 // LIVE</span>
+        </div>
+        <div className="flex flex-col items-end">
+             <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${activeHostiles > 0 ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></span>
+                <span className="font-bold text-sm text-white">{activeHostiles} HOSTILES</span>
+             </div>
+        </div>
+      </div>
+
+      {/* Table Header */}
+      <div className="grid grid-cols-[1fr_3fr_1fr_1fr] gap-2 px-3 py-1 bg-black/60 text-[10px] text-stone-500 font-bold tracking-wider uppercase border-l-2 border-white/10">
+        <span>Unit</span>
+        <span>Status</span>
+        <div className="text-center">Scr</div>
+        <div className="text-right">K/D</div>
+      </div>
+
+      {/* List */}
+      <div className="flex flex-col bg-black/40 backdrop-blur-sm">
+        {combatants.map((c, idx) => {
+          const isPlayer = c.type === 'player';
+          const isBoss = c.type === 'boss';
+          const hpPercent = (c.health / c.maxHealth) * 100;
+
+          return (
+            <div 
+              key={c.id}
+              className={`
+                relative grid grid-cols-[auto_1fr_auto_auto] gap-x-3 gap-y-1 p-2 border-l-2 transition-all duration-300 items-center
+                ${c.isDead ? 'opacity-40 grayscale' : 'opacity-100'}
+                ${isPlayer ? 'bg-cyan-900/20 border-[var(--color-primary-cyan)]' : 
+                  isBoss ? 'bg-red-900/20 border-[var(--color-primary-magenta)]' : 
+                  'border-stone-700 bg-black/20'}
+              `}
+            >
+              {/* Rank / Icon */}
+              <div className="flex flex-col items-center justify-center w-8">
+                <span className={`text-xs font-bold font-orbitron mb-1 ${isPlayer ? 'text-cyan-400' : 'text-stone-500'}`}>
+                    {idx + 1}
+                </span>
+                <TankIcon 
+                  type={c.type}
+                  tier={c.tier}
+                  bossType={c.bossType}
+                  color={c.color} 
+                  className="w-5 h-5" 
+                />
+              </div>
+
+              {/* Name & Health */}
+              <div className="min-w-0 flex flex-col justify-center">
+                <div className="flex items-baseline justify-between">
+                    <span className={`font-bold text-sm truncate leading-none mb-1 ${isPlayer ? 'text-cyan-100' : isBoss ? 'text-red-100' : 'text-stone-300'}`}>
+                        {c.name}
+                    </span>
+                </div>
+                {/* Micro Health Bar */}
+                <div className="w-full h-1 bg-stone-800 rounded-sm overflow-hidden">
+                    <div 
+                        className={`h-full transition-all duration-300 ${isPlayer ? 'bg-cyan-400' : isBoss ? 'bg-[var(--color-primary-magenta)]' : 'bg-orange-500'}`} 
+                        style={{ width: `${Math.max(0, hpPercent)}%` }}
+                    />
+                </div>
+              </div>
+
+              {/* Score */}
+              <div className="font-orbitron text-sm font-bold text-right text-stone-300 self-center">
+                {c.score}
+              </div>
+
+              {/* K/D */}
+              <div className="flex flex-col items-end justify-center text-[10px] font-bold leading-tight self-center w-8">
+                 <span className="text-green-400">{c.kills}</span>
+                 <span className="w-full h-px bg-white/10 my-0.5"></span>
+                 <span className="text-red-400">{c.deaths}</span>
+              </div>
             </div>
-        ))}
+          );
+        })}
+      </div>
+
+      {/* Footer Totals */}
+      <div className="flex justify-between items-center px-4 py-2 bg-[var(--color-primary-cyan)]/10 border-t border-[var(--color-primary-cyan)]/30 border-l-2 border-l-[var(--color-primary-cyan)]">
+         <span className="text-[10px] uppercase text-cyan-400 tracking-wider">Total Casualties</span>
+         <span className="font-orbitron font-bold text-lg text-white text-glow-cyan">{totalKills}</span>
       </div>
 
       <style>{`
-        .leaderboard-container {
-          clip-path: polygon(0 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%);
+        .clip-corner-top-right {
+           clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
         }
-        @keyframes fade-in-right {
-          from { opacity: 0; transform: translateX(20px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        .animate-fade-in-right {
-          animation: fade-in-right 0.5s ease-out forwards;
-        }
-        .glowing-divider {
-          box-shadow: 0 0 10px var(--color-primary-cyan);
-        }
-        /* JIT colors for Tailwind */
-        .text-amber-400 {} .text-green-400 {} .text-red-400 {}
-        .text-amber-300 {} .text-green-300 {} .text-red-300 {}
-        .text-amber-400\/80 {} .text-green-400\/80 {} .text-red-400\/80 {}
       `}</style>
     </div>
   );

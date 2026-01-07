@@ -73,6 +73,7 @@ export interface Projectile {
   targetId?: string;
   turnRate?: number;
   damage?: number;
+  blastRadius?: number; // Added for AOE
   isFrozen?: boolean;
   isChronoShard?: boolean;
   isBossOrb?: boolean;
@@ -90,7 +91,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -99,9 +100,10 @@ export interface Animation {
   width?: number;
   height?: number;
   opacity?: number;
+  targetPosition?: Vector; // For beams
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'barrage' | 'chronoBubble' | 'toxicRounds' | 'timeStop';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'timeStop';
 
 export interface Ability {
   id: AbilityId;
@@ -114,6 +116,7 @@ export interface Ability {
   mastered?: boolean;
   chargeDuration?: number;
   chargeStartTime?: number;
+  firedCount?: number; // Added for rapid fire tracking
 }
 
 export interface PoisonStatusEffect {
@@ -166,11 +169,17 @@ export interface Tank {
   isInvulnerable?: boolean;
   statusEffects?: StatusEffect[];
   homingMissileCount?: number;
+  
+  // AI Properties
+  lastFireTime?: number;
+  aiMode?: 'engage' | 'strafe' | 'flank';
+  aiStrafeDir?: number;
+  aiStateTimer?: number;
 }
 
 export interface Telegraph {
   id: string;
-  type: 'circle' | 'rect';
+  type: 'circle' | 'rect' | 'line';
   position: Vector;
   radius?: number;
   width?: number;
@@ -179,6 +188,7 @@ export interface Telegraph {
   createdAt: number;
   duration: number;
   color?: string;
+  targetPosition?: Vector; // For lines
 }
 
 export interface EffectZone {
@@ -222,12 +232,13 @@ export interface Boss {
   deathTime?: number;
   color: string;
   lastHitTime?: number;
+  lastFireTime?: number;
   hasUsedLastStand?: boolean;
   statusEffects?: StatusEffect[];
   shieldSegments?: { angle: number, health: number, maxHealth: number, active: boolean }[]; // For Sentinel
   attackState: {
-    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'lastStand' | 'summonMinions' | 'dash' | 'poisonNova' | 'shieldBash';
-    phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering';
+    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'railgun';
+    phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering' | 'charging';
     phaseStartTime: number;
     attackData?: {
       telegraphDuration?: number;
@@ -235,9 +246,12 @@ export interface Boss {
       recoveryDuration?: number;
       targets?: Vector[];
       sweepAngleStart?: number;
+      sweepAngleEnd?: number;
       attackOrigin?: Vector;
       attackAngle?: number;
-      dashTarget?: Vector;
+      targetPosition?: Vector; // For railgun locking
+      telegraphId?: string; 
+      telegraphIds?: string[]; // For multiple scatter mines
     };
   };
 }

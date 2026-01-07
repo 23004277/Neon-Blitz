@@ -34,13 +34,6 @@ const App: React.FC = () => {
   ]);
   const [isChatbotLoading, setIsChatbotLoading] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      navigateTo('main-menu');
-    }, 3000); // Show loading screen for 3 seconds
-    return () => clearTimeout(timer);
-  }, []);
-
   const navigateTo = useCallback((screen: Screen) => {
     // Special case for restarting the game
     if (screen === 'game' && currentScreen === 'game') {
@@ -67,6 +60,10 @@ const App: React.FC = () => {
   const goBack = useCallback(() => {
     navigateTo(screenToReturnTo);
   }, [screenToReturnTo, navigateTo]);
+
+  const handleLoadingComplete = useCallback(() => {
+    navigateTo('main-menu');
+  }, [navigateTo]);
 
   const handleSendMessage = async (input: string) => {
     if (!input.trim() || isChatbotLoading) return;
@@ -101,7 +98,7 @@ const App: React.FC = () => {
   const renderScreen = (screen: Screen) => {
     switch (screen) {
       case 'loading':
-        return <LoadingScreen />;
+        return <LoadingScreen onComplete={handleLoadingComplete} />;
       case 'main-menu':
         return <MainMenu navigateTo={navigateTo} />;
       case 'settings':
@@ -155,7 +152,7 @@ const App: React.FC = () => {
           {/* Chatbot */}
           <ChatbotToggleButton 
             onClick={() => setIsChatbotOpen(true)} 
-            isVisible={currentScreen !== 'game'} 
+            isVisible={currentScreen !== 'game' && currentScreen !== 'loading'} 
           />
           {isChatbotOpen && (
             <Chatbot 
