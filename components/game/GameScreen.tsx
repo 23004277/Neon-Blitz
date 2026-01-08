@@ -1085,10 +1085,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const angle = source.turretAngle + spread;
         const rad = angle * (Math.PI/180);
         
-        const speed = MISSILE_SPEED * (isOverpowered ? 1.5 : 1);
-        const damage = isOverpowered ? 4 : (ownerId === 'boss' ? 2 : 2);
-        const radius = isOverpowered ? 60 : (ownerId === 'boss' ? 30 : 40);
-        const color = isOverpowered ? '#fbbf24' : (ownerId === 'boss' ? '#a855f7' : '#ef4444');
+        const isBoss = ownerId === 'boss';
+        // NERF: Reduced speed for boss missiles (0.65x)
+        const speed = MISSILE_SPEED * (isOverpowered ? 1.5 : (isBoss ? 0.65 : 1));
+        const damage = isOverpowered ? 4 : (isBoss ? 2 : 2);
+        const radius = isOverpowered ? 60 : (isBoss ? 30 : 40);
+        const color = isOverpowered ? '#fbbf24' : (isBoss ? '#a855f7' : '#ef4444');
+        // NERF: Reduced turn rate for boss missiles (easier to dodge)
+        const turnRate = isBoss ? 3 : 8;
 
         game.current.projectiles.push({
             id: `missile-${Date.now()}-${Math.random()}`,
@@ -1100,7 +1104,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             damage: damage,
             blastRadius: radius,
             isHoming: true,
-            turnRate: 8,
+            turnRate: turnRate,
             targetId: targetId,
             color: color
         });
