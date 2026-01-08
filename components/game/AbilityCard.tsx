@@ -13,6 +13,7 @@ const ABILITY_COLORS: Record<string, { primary: string; secondary: string; glow:
   missileBarrage: { primary: '#ef4444', secondary: '#b91c1c', glow: 'rgba(239, 68, 68, 0.8)', dim: 'rgba(239, 68, 68, 0.1)' }, // Red
   toxicRounds: { primary: '#84cc16', secondary: '#65a30d', glow: 'rgba(132, 204, 22, 0.8)', dim: 'rgba(132, 204, 22, 0.1)' }, // Lime
   timeStop: { primary: '#06b6d4', secondary: '#0891b2', glow: 'rgba(6, 182, 212, 0.8)', dim: 'rgba(6, 182, 212, 0.1)' }, // Cyan
+  damageConverter: { primary: '#8b5cf6', secondary: '#7c3aed', glow: 'rgba(139, 92, 246, 0.8)', dim: 'rgba(139, 92, 246, 0.1)' }, // Violet
   default: { primary: '#00F0FF', secondary: '#0099aa', glow: 'rgba(0, 240, 255, 0.8)', dim: 'rgba(0, 240, 255, 0.1)' }
 };
 
@@ -50,6 +51,13 @@ const AbilityIcon: React.FC<{ name: string; className?: string; style?: React.CS
     return (
       <svg xmlns="http://www.w3.org/2000/svg" className={className} style={style} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" >
         <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V5.75A2.25 2.25 0 0018 3.5H6A2.25 2.25 0 003.75 5.75v12.5A2.25 2.25 0 006 20.25z" />
+      </svg>
+    );
+  }
+  if (name === 'Flux Matrix') {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" className={className} style={style} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
       </svg>
     );
   }

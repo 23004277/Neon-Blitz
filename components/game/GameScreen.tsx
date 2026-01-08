@@ -50,7 +50,8 @@ const initialPlayer: TankType = {
     id: 'player', name: 'Player', type: 'player', status: 'spawning', spawnTime: 0,
     position: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT-100 }, velocity: {x:0, y:0},
     angle: -90, turretAngle: -90, size: {width:40, height:40}, 
-    health: 10, maxHealth: 10, color: '#00E0FF', score: 0, kills: 0, deaths: 0
+    health: 10, maxHealth: 10, color: '#00E0FF', score: 0, kills: 0, deaths: 0,
+    damageConverterCharge: 0
 };
 
 const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameConfig }> = ({ navigateTo, config }) => {
@@ -78,6 +79,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         abilities: [
              { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 },
              { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 6000, cooldown: 12000, startTime: 0, chargeDuration: 1500 },
+             { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 },
              { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 },
              { id: 'timeStop', name: 'Time Stop', keyBinding: 'Y', state: 'ready', duration: 5000, cooldown: 30000, startTime: 0, chargeDuration: 2000, chargeStartTime: 0 },
         ],
@@ -195,6 +197,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             audio.setMusicState('combat');
         } else {
             audio.setMusicState('ambient');
+        }
+
+        // Damage Converter Charge Decay
+        if (player.damageConverterCharge && player.damageConverterCharge > 0) {
+            // Decay approx 5 charge per second
+            player.damageConverterCharge = Math.max(0, player.damageConverterCharge - (dt / 1000) * 5);
         }
 
         // 1. Player Movement
@@ -344,6 +352,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             }
             else if (a.state === 'active' && now > a.startTime + a.duration) {
                 if (a.id === 'overdrive') audio.stop('overdriveLoop');
+                // Damage Converter cleanup (optional, charge decays naturally)
                 newState = 'cooldown';
                 newStartTime = now;
                 stateChanged = true;
@@ -770,6 +779,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     const checkCollisions = (now: number) => {
         const g = game.current;
+        const player = g.player;
+
         g.projectiles.forEach(p => {
             if (p.ownerId === 'player') {
                 const damage = p.damage || 1;
@@ -889,6 +900,25 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         duration: 800,
                         color: '#ff0000'
                     });
+
+                    // --- DAMAGE CONVERTER LOGIC ---
+                    const damageConverter = g.abilities.find(a => a.id === 'damageConverter');
+                    if (damageConverter && damageConverter.state === 'active') {
+                        // Absorb damage into charge (Cap at 50)
+                        const chargeGain = dmg * 5;
+                        g.player.damageConverterCharge = Math.min(50, (g.player.damageConverterCharge || 0) + chargeGain);
+                        
+                        // Visual feedback for charge gain
+                        g.damageNumbers.push({
+                            id: `charge-${now}-${Math.random()}`,
+                            text: '+CHARGE',
+                            position: { x: g.player.position.x, y: g.player.position.y + 30 },
+                            createdAt: now,
+                            duration: 600,
+                            color: '#8b5cf6'
+                        });
+                        audio.play('uiToggle'); // Slight electronic sound
+                    }
                 }
             }
         });
@@ -962,6 +992,19 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  damage = 4;
                  speed *= 1.2;
                  color = '#fbbf24';
+             }
+             
+             // FLUX MATRIX BONUS
+             // If damage converter has charge, expend some of it to boost damage
+             const charge = game.current.player.damageConverterCharge || 0;
+             if (charge > 0) {
+                 const bonus = charge * 0.2; // 20% of charge as damage
+                 damage += bonus;
+                 // Change color to violet to indicate charged shot
+                 color = '#8b5cf6';
+                 // Optionally consume a little charge on fire, or just let it decay?
+                 // Prompt implies "output increased by this energy", let's consume a bit on fire for 'momentary' feel
+                 game.current.player.damageConverterCharge = Math.max(0, charge - 2); 
              }
         } else if (ownerId === 'boss') {
              damage = 2;
@@ -1070,6 +1113,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (e.key.toLowerCase() === 'q') triggerAbility('overdrive');
             if (e.key.toLowerCase() === 'f') triggerAbility('missileBarrage');
             if (e.key.toLowerCase() === 'y') triggerAbility('timeStop');
+            if (e.key.toLowerCase() === 'r') triggerAbility('damageConverter'); // New Keybind
             if ((e.key === ' ' || e.code === 'Space') && !e.repeat) fireProjectile(game.current.player, game.current.player.turretAngle);
 
             if (e.key.toLowerCase() === 'e') {
@@ -1160,6 +1204,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     });
                     game.current.screenShake = Math.max(game.current.screenShake, 15);
                 }
+            } else if (id === 'damageConverter') {
+                audio.play('shieldHit'); // Placeholder sound
             } else {
                 audio.play('uiClick');
             }

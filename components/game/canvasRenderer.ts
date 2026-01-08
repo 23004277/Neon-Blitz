@@ -329,6 +329,50 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
     const cFill = (col: string) => isHit ? '#ffffff' : col;
     const cStroke = (col: string) => isHit ? '#ffffff' : col;
 
+    // --- DAMAGE CONVERTER AURA (Flux Matrix) ---
+    // If the tank has stored charge, visualize it as an aura
+    if (tank.damageConverterCharge && tank.damageConverterCharge > 0) {
+        const chargeRatio = Math.min(1, tank.damageConverterCharge / 50); // Cap at 50 for max visual intensity
+        const auraSize = 40 + (chargeRatio * 20); // Aura grows
+        const auraAlpha = 0.3 + (chargeRatio * 0.5);
+        
+        ctx.save();
+        // Electric pulse effect
+        const pulse = Math.sin(now * 0.02) * 5;
+        
+        // Outer glow
+        ctx.beginPath();
+        ctx.arc(0, 0, auraSize + pulse, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(139, 92, 246, ${auraAlpha * 0.4})`; // Violet
+        ctx.fill();
+        
+        // Inner intense ring
+        ctx.beginPath();
+        ctx.arc(0, 0, (auraSize * 0.8) - pulse, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(167, 139, 250, ${auraAlpha})`;
+        ctx.lineWidth = 2 + (chargeRatio * 3);
+        ctx.setLineDash([10, 5]);
+        ctx.lineDashOffset = now * 0.05;
+        ctx.stroke();
+
+        // Lightning crackles
+        if (chargeRatio > 0.3) {
+            ctx.strokeStyle = '#ddd6fe';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            const numSparks = Math.floor(chargeRatio * 5);
+            for(let i=0; i<numSparks; i++) {
+                 const angle = Math.random() * Math.PI * 2;
+                 const dist = 20 + Math.random() * 20;
+                 ctx.beginPath();
+                 ctx.moveTo(Math.cos(angle)*20, Math.sin(angle)*20);
+                 ctx.lineTo(Math.cos(angle)*dist, Math.sin(angle)*dist);
+                 ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
     ctx.rotate(degToRad(tank.angle));
 
     if (isPlayer) {
@@ -852,7 +896,7 @@ export function drawDamageNumbers(ctx: CanvasRenderingContext2D, nums: DamageNum
         const val = parseInt(num.text);
         // Assuming base dmg is ~2, hits > 3 are high damage (crits/overdrive)
         const isCrit = !isNaN(val) && val >= 4; 
-        const isHeal = num.text === 'REPAIR';
+        const isHeal = num.text === 'REPAIR' || num.text.includes('+');
         
         ctx.font = (isCrit || isHeal) 
             ? '900 24px "Orbitron", sans-serif' 

@@ -103,7 +103,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'timeStop';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'timeStop' | 'damageConverter';
 
 export interface Ability {
   id: AbilityId;
@@ -169,6 +169,7 @@ export interface Tank {
   isInvulnerable?: boolean;
   statusEffects?: StatusEffect[];
   homingMissileCount?: number;
+  damageConverterCharge?: number; // Stores energy from damage taken
   
   // AI Properties
   lastFireTime?: number;
