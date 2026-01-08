@@ -33,6 +33,21 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   shot_4: { layers: [{ type: 'square', freqStart: 2000, freqEnd: 300, gain: 0.07, duration: 0.08 }, { type: 'triangle', freqStart: 300, freqEnd: 50, gain: 0.1, duration: 0.1 }] },
   shot_5: { layers: [{ type: 'triangle', freqStart: 600, freqEnd: 50, gain: 0.12, duration: 0.2 }, { type: 'noise', filterFreq: 1500, gain: 0.08, duration: 0.15 }] },
   
+  // Rocket Barrage SFX
+  rocketLaunch: { 
+    layers: [
+      { type: 'noise', filterFreq: 1500, gain: 0.1, duration: 0.25 }, // Thrust hiss
+      { type: 'sawtooth', freqStart: 150, freqEnd: 600, gain: 0.08, duration: 0.2 } // Ascent whoosh
+    ] 
+  },
+  rocketExplosion: { 
+    layers: [
+      { type: 'noise', filterFreq: 800, gain: 0.25, duration: 0.4 }, // Crunch
+      { type: 'square', freqStart: 120, freqEnd: 20, gain: 0.2, duration: 0.3 }, // Boom
+      { type: 'triangle', freqStart: 200, freqEnd: 50, gain: 0.1, duration: 0.15 } // Impact pop
+    ] 
+  },
+
   // Combat - Impacts
   impact_damage: { layers: [{ type: 'sawtooth', freqStart: 150, freqEnd: 50, gain: 0.15, duration: 0.1 }, { type: 'noise', filterFreq: 1000, gain: 0.1, duration: 0.1 }] }, 
   impact_player: { layers: [{ type: 'square', freqStart: 100, freqEnd: 20, gain: 0.25, duration: 0.2 }, { type: 'noise', filterFreq: 600, gain: 0.2, duration: 0.15 }] }, 
@@ -99,11 +114,6 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
         { type: 'noise', filterFreq: 5000, gain: 0.2, duration: 0.4 }
     ] 
   },
-
-  // --- ENGINE LOOPS (Not played via play(), used in updateEngine) ---
-  // Player: High tech electric whine + low hum
-  // Enemy: Diesel/Mechanical rumble
-  // Boss: Heavy Reactor throb
 };
 
 export class AudioController {
@@ -372,7 +382,6 @@ export class AudioController {
       }
 
       // Update parameters based on speed (0 to ~5)
-      // Smooth out the gain changes
       const isMoving = speed > 0.1;
       const targetGain = isMoving ? (type === 'boss' ? 0.3 : type === 'player' ? 0.15 : 0.08) : 0;
       
@@ -380,7 +389,6 @@ export class AudioController {
 
       // Pitch modulation
       if (isMoving && engine.baseFreqs.length > 0) {
-          // Slight pitch up with speed
           const pitchMod = 1 + (Math.min(speed, 5) / 20); // up to 1.25x
           engine.oscs.forEach((osc, i) => {
              if (osc instanceof OscillatorNode && engine && engine.baseFreqs[i] > 0) {
@@ -394,10 +402,8 @@ export class AudioController {
       const engine = this.activeEngines.get(id);
       if (engine) {
           const t = this.ctx.currentTime;
-          // Fade out nicely
           engine.gain.gain.setTargetAtTime(0, t, 0.2);
           setTimeout(() => {
-              // Double check if engine still exists (wasn't forced closed)
               const currentEngine = this.activeEngines.get(id);
               if (currentEngine === engine) {
                   engine.oscs.forEach(o => { try { o.stop(); } catch(e){} });
@@ -405,21 +411,13 @@ export class AudioController {
                   this.activeEngines.delete(id);
               }
           }, 250);
-          // Remove from map after timeout inside callback? 
-          // No, removing immediately allows tracking logic to restart if needed, 
-          // but fading creates ghost if restarted immediately.
-          // Better to keep in map but marked as fading? 
-          // For simplicity, we just delete it from map after timeout or if force stopped.
-          // But here, we allow the fade to happen detached.
           this.activeEngines.delete(id);
       }
   }
 
-  // --- Clean Up Methods ---
   stopAllEngines() {
       this.activeEngines.forEach((engine) => {
           try {
-              // Disconnect immediately to prevent bleeding
               engine.gain.disconnect();
               engine.oscs.forEach(o => { try { o.stop(); } catch(e){} });
           } catch(e) {}
@@ -490,21 +488,27 @@ export class AudioController {
         this.activeLoops.set(key, {
             gain: lowGain,
             stop: (stopTime: number) => {
-                oscLow1.stop(stopTime);
-                oscLow2.stop(stopTime);
-                oscHigh.stop(stopTime);
-                amLfo.stop(stopTime);
-                highGain.gain.cancelScheduledValues(this.ctx.currentTime);
-                highGain.gain.linearRampToValueAtTime(0, stopTime);
+                try {
+                    // Properly stop the oscillators
+                    oscLow1.stop(stopTime);
+                    oscLow2.stop(stopTime);
+                    oscHigh.stop(stopTime);
+                    amLfo.stop(stopTime);
+                    
+                    // Properly ramp down highGain to avoid lingering sound
+                    // We must anchor the value at current time before ramping down
+                    const now = this.ctx.currentTime;
+                    highGain.gain.cancelScheduledValues(now);
+                    highGain.gain.setValueAtTime(highGain.gain.value, now);
+                    highGain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
             }
         });
 
     } else if (key === 'beamCharge') {
-        // Shorter, sharper charge up (1.5s target)
         const osc1 = this.ctx.createOscillator();
         osc1.type = 'triangle';
         osc1.frequency.setValueAtTime(150, t);
-        // Ramp to peak exactly at 1.5s
         osc1.frequency.exponentialRampToValueAtTime(1500, t + 1.5); 
 
         const osc2 = this.ctx.createOscillator();
@@ -514,10 +518,9 @@ export class AudioController {
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.18, t + 0.3); // Quick fade in
-        gain.gain.exponentialRampToValueAtTime(0.25, t + 1.5); // Crescendo to 1.5s
+        gain.gain.linearRampToValueAtTime(0.18, t + 0.3); 
+        gain.gain.exponentialRampToValueAtTime(0.25, t + 1.5);
 
-        // Fast flutter
         const lfo = this.ctx.createOscillator();
         lfo.type = 'sawtooth';
         lfo.frequency.setValueAtTime(15, t);
@@ -546,8 +549,6 @@ export class AudioController {
         });
         
     } else if (key === 'beamFire') {
-        // COMPLEX BEAM SOUND
-        // Layer 1: Sub Bass Rumble (The power)
         const subOsc = this.ctx.createOscillator();
         subOsc.type = 'sawtooth';
         subOsc.frequency.setValueAtTime(45, t);
@@ -558,7 +559,6 @@ export class AudioController {
         subFilter.frequency.value = 150;
         subOsc.connect(subFilter).connect(subGain);
 
-        // Layer 2: Electrical Crackle (High Pass Noise)
         const noise = this.ctx.createBufferSource();
         if (this.noiseBuffer) noise.buffer = this.noiseBuffer;
         noise.loop = true;
@@ -566,9 +566,8 @@ export class AudioController {
         noiseFilter.type = 'bandpass';
         noiseFilter.frequency.value = 2000;
         noiseFilter.Q.value = 1;
-        // Modulate the filter for "movement"
         const noiseLfo = this.ctx.createOscillator();
-        noiseLfo.frequency.value = 12; // 12hz wobble
+        noiseLfo.frequency.value = 12; 
         const noiseLfoGain = this.ctx.createGain();
         noiseLfoGain.gain.value = 500;
         noiseLfo.connect(noiseLfoGain).connect(noiseFilter.frequency);
@@ -576,13 +575,11 @@ export class AudioController {
         noiseGain.gain.value = 0.08;
         noise.connect(noiseFilter).connect(noiseGain);
 
-        // Layer 3: Unstable Mid Tone (The "Laser" sound)
         const midOsc = this.ctx.createOscillator();
         midOsc.type = 'square';
         midOsc.frequency.setValueAtTime(300, t);
-        // FM Synthesis for "harshness"
         const fmOsc = this.ctx.createOscillator();
-        fmOsc.frequency.value = 55; // Metallic ratio
+        fmOsc.frequency.value = 55; 
         const fmGain = this.ctx.createGain();
         fmGain.gain.value = 100;
         fmOsc.connect(fmGain).connect(midOsc.frequency);
@@ -590,10 +587,9 @@ export class AudioController {
         midGain.gain.value = 0.06;
         midOsc.connect(midGain);
 
-        // Master output for this effect
         const masterBeamGain = this.ctx.createGain();
         masterBeamGain.gain.setValueAtTime(0, t);
-        masterBeamGain.gain.linearRampToValueAtTime(1, t + 0.1); // Fast attack
+        masterBeamGain.gain.linearRampToValueAtTime(1, t + 0.1);
 
         subGain.connect(masterBeamGain);
         noiseGain.connect(masterBeamGain);
@@ -624,9 +620,11 @@ export class AudioController {
       if (loop) {
           const t = this.ctx.currentTime;
           // Smooth fade out
-          loop.gain.gain.cancelScheduledValues(t);
-          loop.gain.gain.setValueAtTime(loop.gain.gain.value, t);
-          loop.gain.gain.linearRampToValueAtTime(0, t + 0.15); // Slightly longer tail
+          try {
+            loop.gain.gain.cancelScheduledValues(t);
+            loop.gain.gain.setValueAtTime(loop.gain.gain.value, t);
+            loop.gain.gain.linearRampToValueAtTime(0, t + 0.15); 
+          } catch(e) { console.error(e); }
           
           loop.stop(t + 0.15);
           this.activeLoops.delete(key);
@@ -660,10 +658,9 @@ export class AudioController {
       const t = this.ctx.currentTime;
       const state = this.currentMusicState;
 
-      // In Loading state, just play a low, sparse drone
       if (state === 'loading') {
           if (Math.random() < 0.05) {
-              this.playAtmosphericPad(t, 55, 3.0); // Very low A
+              this.playAtmosphericPad(t, 55, 3.0); 
           }
           return;
       }

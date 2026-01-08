@@ -25,7 +25,6 @@ export function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: n
 }
 
 export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number, isTimeStopped: boolean) {
-    // ... (Keep existing implementation unchanged)
     if (boss.status !== 'active' && boss.status !== 'spawning') return;
     ctx.save();
     ctx.translate(boss.position.x, boss.position.y);
@@ -87,37 +86,53 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
         ctx.shadowBlur = 0;
     }
     
+    // --- UPDATED BOSS SHOCKWAVE TELEGRAPH ---
     if (boss.attackState.currentAttack === 'shockwave') {
         const p = (now - boss.attackState.phaseStartTime) / 1000;
         if (boss.attackState.phase === 'telegraphing') {
             ctx.save();
             ctx.scale(1/scale, 1/scale); 
             
-            ctx.fillStyle = '#ef4444';
-            for(let i=0; i<5; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 60 + Math.random() * 50 * (1-p);
+            // Flower of Life Pattern - Charging Up
+            const maxRadius = 200;
+            const chargeR = maxRadius * p; 
+            const alpha = 0.3 + (Math.sin(now * 0.02) * 0.2);
+            
+            ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
+            ctx.lineWidth = 1.5;
+            
+            // Apply slight rotation for charging effect
+            ctx.rotate(now * 0.001);
+
+            // Draw Central Circle
+            const subR = chargeR * 0.55; 
+            ctx.beginPath();
+            ctx.arc(0, 0, subR, 0, Math.PI*2);
+            ctx.stroke();
+            
+            // Draw 6 Surrounding Circles (Flower of Life)
+            for(let i=0; i<6; i++) {
+                const angle = (i * 60 * Math.PI / 180);
+                const cx = Math.cos(angle) * (chargeR * 0.5);
+                const cy = Math.sin(angle) * (chargeR * 0.5);
+                
                 ctx.beginPath();
-                ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, 3, 0, Math.PI*2);
-                ctx.fill();
+                ctx.arc(cx, cy, subR, 0, Math.PI*2);
+                ctx.stroke();
             }
             
-            ctx.strokeStyle = `rgba(239, 68, 68, ${p})`;
-            ctx.lineWidth = 2 + p * 3;
+            // Outer Warning Boundary
+            ctx.setLineDash([15, 10]);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `rgba(255, 0, 0, ${0.3 + p * 0.5})`;
             ctx.beginPath();
-            ctx.arc(0, 0, 50 + Math.sin(now*0.05)*5, 0, Math.PI*2);
+            ctx.arc(0, 0, maxRadius, 0, Math.PI*2);
             ctx.stroke();
             
-            ctx.restore();
-        } else if (boss.attackState.phase === 'attacking') {
-            ctx.save();
-            ctx.scale(1/scale, 1/scale);
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 10;
-            ctx.globalAlpha = 1 - Math.min(1, (now - boss.attackState.phaseStartTime) / 500);
-            ctx.beginPath();
-            ctx.arc(0, 0, 150, 0, Math.PI*2);
-            ctx.stroke();
+            // Fill Inner Danger Zone
+            ctx.fillStyle = `rgba(239, 68, 68, ${p * 0.15})`;
+            ctx.fill();
+            
             ctx.restore();
         }
     }
@@ -1021,17 +1036,63 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, anims: Animation[]
 
         } else if (anim.type === 'shockwave') {
             const maxR = anim.width || 150;
-            const r = maxR * progress;
+            const easeOut = 1 - Math.pow(1 - progress, 3); // Fast out, slow end
+            const r = maxR * easeOut;
             const alpha = 1 - progress;
+            
+            // 1. Main Blast Ring
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ef4444';
             ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-            ctx.lineWidth = 10 * alpha;
+            ctx.lineWidth = 15 * (1 - progress);
             ctx.beginPath();
             ctx.arc(0, 0, r, 0, Math.PI*2);
             ctx.stroke();
-            ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.2})`;
+            
+            // 2. Flower of Life Pattern (Cyber Mandala Explosion)
+            ctx.save();
+            ctx.rotate(progress * Math.PI); // Rotate as it expands
+            
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.8})`; 
+            ctx.fillStyle = `rgba(239, 68, 68, ${alpha * 0.15})`;
+            
+            const subR = r * 0.55; 
+            
+            // Center Circle
             ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI*2);
+            ctx.arc(0, 0, subR, 0, Math.PI*2);
+            ctx.stroke();
             ctx.fill();
+            
+            // 6 Surrounding Circles
+            for(let i=0; i<6; i++) {
+                const angle = (i * 60) * (Math.PI / 180);
+                const cx = Math.cos(angle) * (r * 0.5); // Offset from center
+                const cy = Math.sin(angle) * (r * 0.5);
+                
+                ctx.beginPath();
+                ctx.arc(cx, cy, subR, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.fill();
+            }
+            
+            ctx.restore();
+
+            // 3. Shockwave Distortion Lines (Digital cracks)
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(252, 165, 165, ${alpha})`; // Light red
+            ctx.lineWidth = 2;
+            const numLines = 12;
+            for(let i=0; i<numLines; i++) {
+                const angle = (i / numLines) * Math.PI * 2 + (progress * 2);
+                const startR = r * 0.8;
+                const endR = r * 1.2;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(angle)*startR, Math.sin(angle)*startR);
+                ctx.lineTo(Math.cos(angle)*endR, Math.sin(angle)*endR);
+                ctx.stroke();
+            }
 
         } else if (anim.type === 'railgunBeam') {
             const end = anim.targetPosition || {x: 0, y: 0};

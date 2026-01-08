@@ -266,7 +266,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
 
         // AI Update
-        g.enemies.forEach(e => updateEnemyAI(e, player, now, timeScale));
+        g.enemies.forEach(e => updateEnemyAI(e, player, now, timeScale, () => {
+            fireProjectileAt(e.position, e.turretAngle, e.id);
+        }));
         
         // Manage Enemy Engine Sounds (Limit to closest 3 to prevent chaos)
         const enemiesWithDist = g.enemies.map(e => ({
@@ -295,29 +297,29 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
     };
     
-    // ... updateAbilities, checkBeamCollision same as before ...
     const updateAbilities = (now: number) => {
         const g = game.current;
         let stateChanged = false;
         
+        const overdriveActive = g.abilities.find(a => a.id === 'overdrive')?.state === 'active';
+
         g.abilities = g.abilities.map(a => {
             let newState = a.state;
             let newStartTime = a.startTime;
             
             // MISSILE BARRAGE
             if (a.id === 'missileBarrage' && a.state === 'active') {
-                const totalMissiles = 20;
+                const totalMissiles = overdriveActive ? 40 : 20;
                 const interval = a.duration / totalMissiles;
                 const elapsed = now - a.startTime;
                 
-                // Calculate how many missiles should have been fired by now
                 const shouldHaveFired = Math.min(totalMissiles, Math.floor(elapsed / interval));
                 const firedSoFar = a.firedCount || 0;
                 
                 if (shouldHaveFired > firedSoFar) {
                     const count = shouldHaveFired - firedSoFar;
                     for(let i=0; i<count; i++) {
-                         fireMissile();
+                         fireMissile('player', overdriveActive);
                     }
                     a.firedCount = shouldHaveFired;
                 }
@@ -363,25 +365,27 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     const updateHomingProjectiles = (dt: number, enemies: TankType[], boss: Boss | null) => {
         const timeScale = dt / 16.67;
         game.current.projectiles.forEach(p => {
-            if (p.isHoming && p.ownerId === 'player') {
-                // Find Target if not set or invalid
-                // Simple strategy: Look for closest enemy
+            if (p.isHoming) {
+                // Determine target based on projectile owner
                 let targetPos: Vector | null = null;
                 
-                // Prioritize boss
-                if (boss && boss.status === 'active') {
-                    targetPos = boss.position;
+                if (p.ownerId === 'player') {
+                    // Player tracking Enemy/Boss
+                    if (boss && boss.status === 'active') {
+                        targetPos = boss.position;
+                    } else {
+                        let minDist = 9999;
+                        enemies.forEach(e => {
+                            if (e.status !== 'active') return;
+                            const d = Math.hypot(e.position.x - p.position.x, e.position.y - p.position.y);
+                            if (d < minDist) { minDist = d; targetPos = e.position; }
+                        });
+                    }
                 } else {
-                    // Find closest enemy
-                    let minDist = 9999;
-                    enemies.forEach(e => {
-                        if (e.status !== 'active') return;
-                        const d = Math.hypot(e.position.x - p.position.x, e.position.y - p.position.y);
-                        if (d < minDist) {
-                            minDist = d;
-                            targetPos = e.position;
-                        }
-                    });
+                    // Boss/Enemy tracking Player
+                    if (game.current.player.status === 'active') {
+                        targetPos = game.current.player.position;
+                    }
                 }
 
                 if (targetPos) {
@@ -501,8 +505,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     const updateBoss = (boss: Boss, player: TankType, now: number, timeScale: number) => {
         if (boss.status !== 'active') return;
 
+        // --- SIMULTANEOUS ATTACKS (Passive Moves) ---
+        // 1. Nova Burst (Randomly fires a ring of bullets)
+        if (Math.random() < 0.005 * timeScale) { // ~Every 3-4s
+            const count = 12;
+            for(let i=0; i<count; i++) {
+                const angle = (360 / count) * i + (now * 0.1); 
+                fireProjectileAt(boss.position, angle, boss.id);
+            }
+            audio.play('shot_5', boss.position.x);
+        }
+
+        // 2. Homing Missile Launch (Randomly fires a tracking missile)
+        if (Math.random() < 0.003 * timeScale) { // ~Every 5-6s
+            fireMissile('boss', false);
+        }
+
         // --- LAST STAND TRIGGER ---
-        if (boss.health < boss.maxHealth * 0.20 && !boss.hasUsedLastStand) { // Trigger at 20%
+        if (boss.health < boss.maxHealth * 0.20 && !boss.hasUsedLastStand) { 
             boss.hasUsedLastStand = true;
             boss.attackState = { 
                 currentAttack: 'lastStand', 
@@ -551,7 +571,6 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     const d = Math.hypot(p.position.x - boss.position.x, p.position.y - boss.position.y);
                     return d > maxRadius;
                 });
-                
                 return;
             }
             return;
@@ -566,9 +585,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         let angleDiff = targetAngle - boss.angle;
         while (angleDiff <= -180) angleDiff += 360;
         while (angleDiff > 180) angleDiff -= 360;
-        
         boss.angle += angleDiff * 0.05 * timeScale;
-        
         if (boss.attackState.currentAttack !== 'laserSweep' && boss.attackState.currentAttack !== 'railgun') {
              boss.turretAngle = boss.angle; 
         }
@@ -578,496 +595,176 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         if (!isStationaryAttack) {
             const speed = 1.0 * timeScale;
             let moveDir = 0;
-            if (dist > 350) moveDir = 1;
-            else if (dist < 150) moveDir = -1;
-
+            if (dist > 350) moveDir = 1; else if (dist < 150) moveDir = -1;
             if (moveDir !== 0) {
                 const vx = Math.cos(boss.angle * (Math.PI/180)) * speed * moveDir;
                 const vy = Math.sin(boss.angle * (Math.PI/180)) * speed * moveDir;
-                boss.position.x += vx;
-                boss.position.y += vy;
+                boss.position.x += vx; boss.position.y += vy;
                 boss.velocity = { x: vx, y: vy };
-                
                 boss.position.x = Math.max(50, Math.min(ARENA_WIDTH-50, boss.position.x));
                 boss.position.y = Math.max(50, Math.min(ARENA_HEIGHT-50, boss.position.y));
-            } else {
-                boss.velocity = {x:0, y:0};
-            }
-        } else {
-            boss.velocity = {x: 0, y: 0};
-        }
+            } else { boss.velocity = {x:0, y:0}; }
+        } else { boss.velocity = {x: 0, y: 0}; }
 
-        // --- BASIC ATTACK (Twin Barrels) ---
-        // Cooldown reduced to 800ms for harder fight
-        if (boss.attackState.currentAttack === 'none' && (!boss.lastFireTime || now - boss.lastFireTime > 800)) {
-            // Twin Barrel Shot for Goliath
+        // --- BASIC ATTACK (Now fires simultaneously with other phases except channeling) ---
+        const isChanneling = boss.attackState.phase === 'attacking' && (boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'railgun');
+        
+        if (!isChanneling && (!boss.lastFireTime || now - boss.lastFireTime > 600)) {
             const rad = boss.turretAngle * (Math.PI/180);
             const perp = rad + Math.PI/2;
-            
-            // Left Barrel Position
-            const p1 = { 
-                x: boss.position.x + Math.cos(perp) * 10, 
-                y: boss.position.y + Math.sin(perp) * 10 
-            };
-            // Right Barrel Position
-            const p2 = { 
-                x: boss.position.x - Math.cos(perp) * 10, 
-                y: boss.position.y - Math.sin(perp) * 10 
-            };
-            
+            const p1 = { x: boss.position.x + Math.cos(perp) * 10, y: boss.position.y + Math.sin(perp) * 10 };
+            const p2 = { x: boss.position.x - Math.cos(perp) * 10, y: boss.position.y - Math.sin(perp) * 10 };
             fireProjectileAt(p1, boss.turretAngle, boss.id);
             fireProjectileAt(p2, boss.turretAngle, boss.id);
-            
             boss.lastFireTime = now;
-            audio.play('shot_2', boss.position.x); // Heavier shot sound
+            audio.play('shot_2', boss.position.x);
         }
         
         // --- ATTACK STATE MACHINE ---
         const { currentAttack, phase, phaseStartTime, attackData } = boss.attackState;
-        
-        // Reduced idle time to 800ms
-        if (phase === 'idle' && now > phaseStartTime + 800) {
-            // Select next attack based on distance and RNG
+        if (phase === 'idle' && now > phaseStartTime + 500) {
             const rand = Math.random();
             let nextAttack: typeof currentAttack = 'mortarVolley';
-            
-            // REVISED AI LOGIC WITH NEW MOVES
-            if (dist < 200) {
-                // Point blank range? Get off me!
-                if (rand < 0.7) nextAttack = 'shockwave';
-                else nextAttack = 'mortarVolley';
-            }
-            else if (dist > 550) {
-                 // Long Range? Railgun snipe.
-                 if (rand < 0.5) nextAttack = 'railgun';
-                 else if (rand < 0.8) nextAttack = 'scatterMines';
-                 else nextAttack = 'laserSweep';
-            } 
-            else {
-                 // Mid Range: Balanced
-                 if (rand < 0.3) nextAttack = 'mortarVolley';
-                 else if (rand < 0.6) nextAttack = 'scatterMines';
-                 else nextAttack = 'laserSweep';
-            }
+            if (dist < 200) { if (rand < 0.7) nextAttack = 'shockwave'; else nextAttack = 'mortarVolley'; }
+            else if (dist > 550) { if (rand < 0.5) nextAttack = 'railgun'; else if (rand < 0.8) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; } 
+            else { if (rand < 0.3) nextAttack = 'mortarVolley'; else if (rand < 0.6) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; }
 
             const targetPos = { ...player.position }; 
-            
             if (nextAttack === 'shockwave') {
-                boss.attackState = {
-                    currentAttack: nextAttack,
-                    phase: 'telegraphing',
-                    phaseStartTime: now,
-                    attackData: {
-                        telegraphDuration: 1000,
-                        attackDuration: 500
-                    }
-                };
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: 1000, attackDuration: 500 } };
                 audio.play('bossCharge', boss.position.x);
-            }
-            else if (nextAttack === 'railgun') {
-                boss.attackState = {
-                    currentAttack: nextAttack,
-                    phase: 'telegraphing',
-                    phaseStartTime: now,
-                    attackData: {
-                        telegraphDuration: 1500, // 1.5s tracking/lock
-                        attackDuration: 500, // Fire visual
-                        targetPosition: targetPos // Initial guess
-                    }
-                };
+            } else if (nextAttack === 'railgun') {
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: 1500, attackDuration: 500, targetPosition: targetPos } };
                 audio.play('bossRailgunCharge', boss.position.x);
-            }
-            else if (nextAttack === 'laserSweep') {
-                boss.attackState = {
-                    currentAttack: nextAttack,
-                    phase: 'telegraphing',
-                    phaseStartTime: now,
-                    attackData: {
-                        telegraphDuration: 1000, // Faster warning
-                        attackDuration: 2500, // Longer beam duration for intensity
-                        sweepAngleStart: boss.angle - 45, // Wider sweep
-                        sweepAngleEnd: boss.angle + 45,
-                    }
-                };
-                audio.play('bossCharge', boss.position.x);
-            } 
-            else if (nextAttack === 'scatterMines') {
-                const count = 10 + Math.floor(Math.random() * 4); // Increased mine count (10-14)
-                const telegraphIds: string[] = [];
-                for(let i=0; i<count; i++) {
-                    const id = `tele-mine-${now}-${i}`;
-                    const angle = Math.random() * Math.PI * 2;
-                    const radius = 50 + Math.random() * 250;
-                    const minePos = {
-                        x: Math.max(30, Math.min(ARENA_WIDTH-30, targetPos.x + Math.cos(angle)*radius)),
-                        y: Math.max(30, Math.min(ARENA_HEIGHT-30, targetPos.y + Math.sin(angle)*radius))
-                    };
-                    game.current.telegraphs.push({
-                        id, type: 'circle', position: minePos, radius: 40, createdAt: now, duration: 1500, color: '#f97316'
-                    });
-                    telegraphIds.push(id);
-                }
-                
-                boss.attackState = {
-                    currentAttack: nextAttack,
-                    phase: 'telegraphing',
-                    phaseStartTime: now,
-                    attackData: {
-                        telegraphDuration: 1500,
-                        telegraphIds: telegraphIds
-                    }
-                };
-                audio.play('bossWarning', boss.position.x);
-            }
-            else {
-                // CLUSTER MORTAR (Goliath Special) - 5 Shot Cluster
-                const telegraphIds: string[] = [];
-                const offsets = [
-                    {x:0, y:0},
-                    {x: 60, y: 40},
-                    {x: -60, y: 40},
-                    {x: 60, y: -40},
-                    {x: -60, y: -40}
-                ];
-
-                offsets.forEach((off, i) => {
-                    const id = `tele-mortar-${now}-${i}`;
-                    const pos = { x: targetPos.x + off.x, y: targetPos.y + off.y };
-                    game.current.telegraphs.push({ 
-                        id, type: 'circle', position: pos, radius: 80, createdAt: now, duration: 1500 
-                    });
-                    telegraphIds.push(id);
-                });
-
+            } else if (nextAttack === 'laserSweep') {
+                // UPDATED: 360 Degree Sweep
                 boss.attackState = { 
                     currentAttack: nextAttack, 
                     phase: 'telegraphing', 
                     phaseStartTime: now, 
                     attackData: { 
-                        telegraphDuration: 1500,
-                        telegraphIds: telegraphIds,
-                        attackOrigin: targetPos 
+                        telegraphDuration: 1000, 
+                        attackDuration: 6000, // Slower sweep for player evasion
+                        sweepAngleStart: boss.angle, 
+                        sweepAngleEnd: boss.angle + 360 
                     } 
                 };
+                audio.play('bossCharge', boss.position.x);
+            } else if (nextAttack === 'scatterMines') {
+                const count = 10 + Math.floor(Math.random() * 4);
+                const telegraphIds: string[] = [];
+                for(let i=0; i<count; i++) {
+                    const id = `tele-mine-${now}-${i}`;
+                    const angle = Math.random() * Math.PI * 2; const radius = 50 + Math.random() * 250;
+                    const minePos = { x: Math.max(30, Math.min(ARENA_WIDTH-30, targetPos.x + Math.cos(angle)*radius)), y: Math.max(30, Math.min(ARENA_HEIGHT-30, targetPos.y + Math.sin(angle)*radius)) };
+                    game.current.telegraphs.push({ id, type: 'circle', position: minePos, radius: 40, createdAt: now, duration: 1500, color: '#f97316' });
+                    telegraphIds.push(id);
+                }
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: 1500, telegraphIds: telegraphIds } };
+                audio.play('bossWarning', boss.position.x);
+            } else {
+                const telegraphIds: string[] = [];
+                const offsets = [{x:0, y:0}, {x: 60, y: 40}, {x: -60, y: 40}, {x: 60, y: -40}, {x: -60, y: -40}];
+                offsets.forEach((off, i) => {
+                    const id = `tele-mortar-${now}-${i}`; const pos = { x: targetPos.x + off.x, y: targetPos.y + off.y };
+                    game.current.telegraphs.push({ id, type: 'circle', position: pos, radius: 80, createdAt: now, duration: 1500 });
+                    telegraphIds.push(id);
+                });
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: 1500, telegraphIds: telegraphIds, attackOrigin: targetPos } };
                 audio.play('bossCharge', boss.position.x);
             }
         } 
         else if (phase === 'telegraphing') {
-            const dur = attackData?.telegraphDuration || 1500;
-            const elapsed = now - phaseStartTime;
-            const progress = elapsed / dur;
-            
+            const dur = attackData?.telegraphDuration || 1500; const elapsed = now - phaseStartTime; const progress = elapsed / dur;
             if (currentAttack === 'railgun') {
-                // Track player until 80% charge, then lock
                 if (progress < 0.8) {
-                    const dx = player.position.x - boss.position.x;
-                    const dy = player.position.y - boss.position.y;
-                    const angle = Math.atan2(dy, dx) * (180/Math.PI);
-                    boss.turretAngle = angle;
+                    const dx = player.position.x - boss.position.x; const dy = player.position.y - boss.position.y;
+                    const angle = Math.atan2(dy, dx) * (180/Math.PI); boss.turretAngle = angle;
                     if (attackData) attackData.targetPosition = { ...player.position };
                 }
-                // Lock visual handles in canvasRenderer
-            }
-            else if (currentAttack === 'laserSweep') {
+            } else if (currentAttack === 'laserSweep') {
                 const angleToPlayer = Math.atan2(player.position.y - boss.position.y, player.position.x - boss.position.x) * (180/Math.PI);
-                let angleDiff = angleToPlayer - boss.angle;
-                while (angleDiff <= -180) angleDiff += 360;
-                while (angleDiff > 180) angleDiff -= 360;
-                boss.angle += angleDiff * 0.05 * timeScale;
-                boss.turretAngle = boss.angle;
-                
-                if (boss.attackState.attackData) {
-                    boss.attackState.attackData.sweepAngleStart = boss.angle - 45;
-                    boss.attackState.attackData.sweepAngleEnd = boss.angle + 45;
-                }
+                let angleDiff = angleToPlayer - boss.angle; while (angleDiff <= -180) angleDiff += 360; while (angleDiff > 180) angleDiff -= 360;
+                boss.angle += angleDiff * 0.05 * timeScale; boss.turretAngle = boss.angle;
+                if (boss.attackState.attackData) { boss.attackState.attackData.sweepAngleStart = boss.angle; boss.attackState.attackData.sweepAngleEnd = boss.angle + 360; }
             }
-
-            // EXECUTE ATTACK TRANSITION
             if (now > phaseStartTime + dur) {
-                boss.attackState.phase = 'attacking';
-                boss.attackState.phaseStartTime = now;
-                
+                boss.attackState.phase = 'attacking'; boss.attackState.phaseStartTime = now;
                 if (currentAttack === 'shockwave') {
-                    audio.play('bossShockwave', boss.position.x);
-                    game.current.screenShake = 30;
-                    
-                    // Logic: Massive knockback in radius
+                    audio.play('bossShockwave', boss.position.x); game.current.screenShake = 30;
                     game.current.animations.push({ id: `shock-${now}`, type: 'shockwave', position: boss.position, createdAt: now, duration: 600, width: 200 });
-                    
                     const pDist = Math.hypot(player.position.x - boss.position.x, player.position.y - boss.position.y);
                     if (pDist < 200) {
-                        player.health -= 3;
-                        setUiState(prev => ({...prev, playerHealth: player.health}));
+                        player.health -= 3; setUiState(prev => ({...prev, playerHealth: player.health}));
                         game.current.damageNumbers.push({id: `dmg-shock-${now}`, text: '3', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
-                        
-                        // Pushback
                         const pushAngle = Math.atan2(player.position.y - boss.position.y, player.position.x - boss.position.x);
-                        player.position.x += Math.cos(pushAngle) * 150;
-                        player.position.y += Math.sin(pushAngle) * 150;
+                        player.position.x += Math.cos(pushAngle) * 150; player.position.y += Math.sin(pushAngle) * 150;
                     }
-                    
-                    // Transition to idle quickly
-                    setTimeout(() => {
-                        if (game.current.boss) {
-                             game.current.boss.attackState.phase = 'idle';
-                             game.current.boss.attackState.phaseStartTime = Date.now();
-                        }
-                    }, 500);
-                }
-                else if (currentAttack === 'railgun') {
-                    audio.play('bossRailgunFire', boss.position.x);
-                    game.current.screenShake = 20;
-                    
-                    // Raycast Hit
+                    setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
+                } else if (currentAttack === 'railgun') {
+                    audio.play('bossRailgunFire', boss.position.x); game.current.screenShake = 20;
                     const target = attackData?.targetPosition || player.position;
-                    game.current.animations.push({ 
-                        id: `rail-${now}`, 
-                        type: 'railgunBeam', 
-                        position: boss.position, 
-                        targetPosition: target, 
-                        createdAt: now, 
-                        duration: 300 
-                    });
-                    
-                    // Hit Check (Line vs Circle)
-                    // Simplified: Check if player is near line
-                    // A = boss, B = target, P = player
-                    const p = player.position;
-                    const a = boss.position;
-                    const b = target;
-                    
-                    const area = Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y));
+                    game.current.animations.push({ id: `rail-${now}`, type: 'railgunBeam', position: boss.position, targetPosition: target, createdAt: now, duration: 300 });
+                    const p = player.position; const a = boss.position; const b = target;
                     const AB = Math.hypot(b.x - a.x, b.y - a.y);
-                    const distToLine = area / AB;
-                    
-                    // Is player between start and end? (Dot Product check approx)
-                    // Just simple distance check to beam is mostly fine for this arcade style if we assume infinite length or just use target
-                    // Actually, let's just use the target area since it locked on
                     const distToImpact = Math.hypot(p.x - b.x, p.y - b.y);
-                    
-                    if (distToImpact < 40 || (distToLine < 15 && Math.hypot(p.x - a.x, p.y - a.y) < AB)) {
-                         player.health -= 4; // High Damage
-                         setUiState(prev => ({...prev, playerHealth: player.health}));
+                    if (distToImpact < 40) {
+                         player.health -= 4; setUiState(prev => ({...prev, playerHealth: player.health}));
                          game.current.damageNumbers.push({id: `dmg-rail-${now}`, text: '4', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
                          audio.play('hit');
                     }
-                    
-                     setTimeout(() => {
-                        if (game.current.boss) {
-                             game.current.boss.attackState.phase = 'idle';
-                             game.current.boss.attackState.phaseStartTime = Date.now();
-                        }
-                    }, 500);
-                }
-                else if (currentAttack === 'mortarVolley') {
-                    // Detonate all cluster mortars
-                    const ids = attackData?.telegraphIds || [];
-                    const activeTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
-                    
-                    audio.play('bossMortarFire', boss.position.x);
-                    game.current.screenShake = Math.max(game.current.screenShake, 15); // Heavy shake
-
+                     setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
+                } else if (currentAttack === 'mortarVolley') {
+                    const ids = attackData?.telegraphIds || []; const activeTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
+                    audio.play('bossMortarFire', boss.position.x); game.current.screenShake = Math.max(game.current.screenShake, 15);
                     activeTelegraphs.forEach(tele => {
                         game.current.animations.push({ id: `expl-${now}-${tele.id}`, type: 'mortarStrike', position: tele.position, createdAt: now, duration: 800 });
                         if (Math.hypot(player.position.x - tele.position.x, player.position.y - tele.position.y) < 80) {
-                            player.health -= 3;
-                            player.lastHitTime = now;
-                            game.current.screenShake += 5;
-                            audio.play('hit');
+                            player.health -= 3; player.lastHitTime = now; game.current.screenShake += 5; audio.play('hit');
                             setUiState(prev => ({...prev, playerHealth: player.health}));
                             game.current.damageNumbers.push({id: `dmg-p-${now}-${tele.id}`, text: '3', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
                         }
                     });
-                    
-                    // Cleanup
                     game.current.telegraphs = game.current.telegraphs.filter(t => !ids.includes(t.id));
-                } 
-                else if (currentAttack === 'scatterMines') {
-                    audio.play('bossMortarFire', boss.position.x);
-                    game.current.screenShake = Math.max(game.current.screenShake, 8);
-
-                    const ids = attackData?.telegraphIds || [];
-                    const mineTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
-                    
+                } else if (currentAttack === 'scatterMines') {
+                    audio.play('bossMortarFire', boss.position.x); game.current.screenShake = Math.max(game.current.screenShake, 8);
+                    const ids = attackData?.telegraphIds || []; const mineTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
                     mineTelegraphs.forEach((tele, i) => {
                         game.current.animations.push({ id: `mine-expl-${now}-${i}`, type: 'explosion', position: tele.position, createdAt: now + i*100, duration: 600, color: '#f97316' });
                         if (Math.hypot(player.position.x - tele.position.x, player.position.y - tele.position.y) < 60) {
-                             player.health -= 2; // Buffed mine damage
-                             player.lastHitTime = now;
-                             game.current.screenShake += 3;
+                             player.health -= 2; player.lastHitTime = now; game.current.screenShake += 3;
                              setUiState(prev => ({...prev, playerHealth: player.health}));
                              game.current.damageNumbers.push({id: `dmg-p-${now}-${i}`, text: '2', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
                         }
                     });
-                    
                     game.current.telegraphs = game.current.telegraphs.filter(t => !ids.includes(t.id));
-                }
-                else if (currentAttack === 'laserSweep') {
-                    audio.start('beamFire');
-                }
+                } else if (currentAttack === 'laserSweep') { audio.start('beamFire'); }
             }
-        }
-        else if (phase === 'attacking') {
+        } else if (phase === 'attacking') {
             if (currentAttack === 'laserSweep') {
-                const dur = attackData?.attackDuration || 1500;
-                const elapsed = now - phaseStartTime;
-                const progress = elapsed / dur;
-                
-                if (progress > 1) {
-                    audio.stop('beamFire');
-                    boss.attackState.phase = 'idle';
-                    boss.attackState.phaseStartTime = now;
-                    return;
-                }
-                
-                const start = attackData?.sweepAngleStart || 0;
-                const end = attackData?.sweepAngleEnd || 0;
-                const currentAngle = start + (end - start) * progress;
-                
+                const dur = attackData?.attackDuration || 3000; const elapsed = now - phaseStartTime; const progress = elapsed / dur;
+                if (progress > 1) { audio.stop('beamFire'); boss.attackState.phase = 'idle'; boss.attackState.phaseStartTime = now; return; }
+                const start = attackData?.sweepAngleStart || 0; const end = attackData?.sweepAngleEnd || 0; const currentAngle = start + (end - start) * progress;
                 boss.turretAngle = currentAngle;
-                
-                if (now - game.current.lastBossBeamTick > 100) { // 100ms Damage Tick
+                if (now - game.current.lastBossBeamTick > 100) { 
                     game.current.lastBossBeamTick = now;
-                    const rad = currentAngle * (Math.PI/180);
-                    const beamLen = 900;
-                    const p1 = boss.position;
-                    const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
-                    
-                    const playerPos = player.position;
-                    const playerRadius = 20;
-                    
+                    const rad = currentAngle * (Math.PI/180); const beamLen = 900;
+                    const p1 = boss.position; const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
+                    const playerPos = player.position; const playerRadius = 20;
                     const l2 = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
                     let t = ((playerPos.x - p1.x) * (p2.x - p1.x) + (playerPos.y - p1.y) * (p2.y - p1.y)) / l2;
                     t = Math.max(0, Math.min(1, t));
                     const proj = { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
                     const dist = Math.hypot(playerPos.x - proj.x, playerPos.y - proj.y);
-                    
-                    if (dist < playerRadius + 20) { // Wider beam hitbox
-                        player.health -= 1; // 10 DPS (High sustained damage)
-                        player.lastHitTime = now;
-                        game.current.screenShake = 10;
-                        audio.play('impact_player', player.position.x);
+                    if (dist < playerRadius + 20) {
+                        player.health -= 1; player.lastHitTime = now; game.current.screenShake = 10; audio.play('impact_player', player.position.x);
                         setUiState(prev => ({...prev, playerHealth: player.health}));
                         game.current.damageNumbers.push({id: `dmg-laser-${now}`, text: '1', position: {...player.position}, createdAt: now, duration: 800, color: '#f00'});
                     }
                 }
             } else {
-                if (now > phaseStartTime + 500) {
-                    boss.attackState.phase = 'idle';
-                    boss.attackState.phaseStartTime = now;
-                }
+                if (now > phaseStartTime + 500) { boss.attackState.phase = 'idle'; boss.attackState.phaseStartTime = now; }
             }
-        }
-    };
-
-    // ... updateEnemyAI, checkCollisions same as before ...
-    const updateEnemyAI = (e: TankType, player: TankType, now: number, timeScale: number) => {
-        if (e.status !== 'active') return;
-
-        // --- 1. STATE MANAGEMENT ---
-        if (!e.aiStateTimer || now > e.aiStateTimer) {
-            const rand = Math.random();
-            if (rand < 0.6) e.aiMode = 'engage';
-            else if (rand < 0.9) e.aiMode = 'strafe';
-            else e.aiMode = 'flank';
-            
-            e.aiStateTimer = now + (2000 + Math.random() * 2000);
-            if (Math.random() > 0.5) e.aiStrafeDir = (e.aiStrafeDir || 1) * -1;
-        }
-
-        // --- 2. VECTOR CALCULATION ---
-        const dx = player.position.x - e.position.x;
-        const dy = player.position.y - e.position.y;
-        const dist = Math.hypot(dx, dy);
-        
-        const toPlayer = { x: dx/dist, y: dy/dist };
-        
-        let moveX = 0;
-        let moveY = 0;
-
-        let desiredDist = 300;
-        
-        if (dist > desiredDist + 100) {
-            moveX += toPlayer.x * 1.0;
-            moveY += toPlayer.y * 1.0;
-        } else if (dist < 150) {
-            moveX -= toPlayer.x * 1.5;
-            moveY -= toPlayer.y * 1.5;
-        } else {
-            if (e.aiMode === 'strafe') {
-                moveX += -toPlayer.y * (e.aiStrafeDir || 1);
-                moveY += toPlayer.x * (e.aiStrafeDir || 1);
-            } else if (e.aiMode === 'flank') {
-                moveX += (-toPlayer.y * (e.aiStrafeDir || 1)) + (toPlayer.x * 0.5);
-                moveY += (toPlayer.x * (e.aiStrafeDir || 1)) + (toPlayer.y * 0.5);
-            }
-        }
-
-        const enemies = game.current.enemies;
-        let sepX = 0;
-        let sepY = 0;
-        let count = 0;
-        
-        enemies.forEach(other => {
-            if (other === e || other.status !== 'active') return;
-            const odx = e.position.x - other.position.x;
-            const ody = e.position.y - other.position.y;
-            const odist = Math.hypot(odx, ody);
-            
-            if (odist < 80) {
-                const force = (80 - odist) / 80;
-                sepX += (odx / odist) * force;
-                sepY += (ody / odist) * force;
-                count++;
-            }
-        });
-        
-        if (count > 0) {
-            moveX += sepX * 1.5;
-            moveY += sepY * 1.5;
-        }
-
-        const finalLen = Math.hypot(moveX, moveY);
-        if (finalLen > 0.1) {
-            moveX /= finalLen;
-            moveY /= finalLen;
-            
-            const speed = 2.2 * timeScale;
-            e.position.x += moveX * speed;
-            e.position.y += moveY * speed;
-            e.velocity = { x: moveX * speed, y: moveY * speed };
-            
-            if (e.position.x < 30 || e.position.x > ARENA_WIDTH - 30) {
-                e.position.x = Math.max(30, Math.min(ARENA_WIDTH - 30, e.position.x));
-                e.aiStrafeDir = (e.aiStrafeDir || 1) * -1;
-            }
-            if (e.position.y < 30 || e.position.y > ARENA_HEIGHT - 30) {
-                e.position.y = Math.max(30, Math.min(ARENA_HEIGHT - 30, e.position.y));
-                e.aiStrafeDir = (e.aiStrafeDir || 1) * -1;
-            }
-            
-            const moveAngle = Math.atan2(moveY, moveX) * (180/Math.PI);
-            let angleDiff = moveAngle - e.angle;
-            while (angleDiff <= -180) angleDiff += 360;
-            while (angleDiff > 180) angleDiff -= 360;
-            e.angle += angleDiff * 0.1 * timeScale;
-        }
-
-        const bulletTime = dist / PROJECTILE_SPEED;
-        const futureX = player.position.x + (player.velocity?.x || 0) * bulletTime;
-        const futureY = player.position.y + (player.velocity?.y || 0) * bulletTime;
-        
-        const targetAngle = Math.atan2(futureY - e.position.y, futureX - e.position.x) * (180/Math.PI);
-        
-        let turretDiff = targetAngle - e.turretAngle;
-        while (turretDiff <= -180) turretDiff += 360;
-        while (turretDiff > 180) turretDiff -= 360;
-        e.turretAngle += turretDiff * 0.15 * timeScale;
-
-        if ((!e.lastFireTime || now - e.lastFireTime > 2000) && Math.abs(turretDiff) < 20 && dist < 600) {
-            const inaccuracy = (Math.random() - 0.5) * 10;
-            fireProjectileAt(e.position, e.turretAngle + inaccuracy, e.id); // Updated call
-            e.lastFireTime = now;
         }
     };
 
@@ -1117,10 +814,6 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     if (dist < g.boss.size.width/2) {
                         applyHit(g.boss);
                         hitSomething = true;
-                    } else if (p.blastRadius) {
-                        // Check blast radius if not direct hit but close enough? 
-                        // Actually logic usually is: explode on contact or timer. 
-                        // Here we assume missile explodes on contact.
                     }
                 }
                 
@@ -1140,6 +833,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 if (hitSomething) {
                     // AOE Logic
                     if (p.blastRadius) {
+                         audio.play('rocketExplosion', p.position.x);
                          g.animations.push({ 
                             id: `aoe-${now}-${Math.random()}`, 
                             type: 'explosion', 
@@ -1150,60 +844,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                          });
                          
                          const targets = [...g.enemies, g.boss].filter(t => t && t.status === 'active');
-                         targets.forEach(t => {
-                             if (!t) return;
-                             // Don't damage the one we just hit again immediately if we want fairness, 
-                             // but usually direct hit includes splash. 
-                             // Simplify: Blast radius damage is applied to everyone in range EXCEPT direct hit target?
-                             // Or just apply to everyone nearby. 
-                             const d = Math.hypot(t.position.x - p.position.x, t.position.y - p.position.y);
-                             if (d < p.blastRadius!) {
-                                 // Prevent double damage on direct hit? 
-                                 // Let's just say direct hit does 2 damage, splash does 2 damage. 
-                                 // If direct hit, they take 4? Or just ignore splash for direct target?
-                                 // Let's assume direct hit target consumes the projectile, splash hits others.
-                                 // Actually, simplest is: Direct hit happened. Projectile dies.
-                                 // Splash logic applies to all in radius.
-                                 // To avoid complex exclusion, let's just apply splash damage to surrounding only or reduce dmg.
-                                 
-                                 // For this game: Direct hit target took damage already above.
-                                 // Let's apply extra splash to nearby units.
-                                 // Check if this unit was the direct hit target (simplified check by distance, but they moved).
-                                 // Actually, easiest: Projectile explodes. Deal Area Damage to ALL in radius. 
-                                 // If direct hit logic above runs, that's fine.
-                                 
-                                 // Let's just use the direct hit block above for single target impact, 
-                                 // and iterating enemies here for AOE if blastRadius exists.
-                             }
-                         });
                          
-                         // Real AOE implementation:
-                         // Upon hitSomething, iterate all enemies again
                          const splashDamage = p.damage || 2;
                          targets.forEach(t => {
                              if (!t) return;
                              const d = Math.hypot(t.position.x - p.position.x, t.position.y - p.position.y);
                              if (d < p.blastRadius!) {
-                                 // Distance check for direct hit target to avoid double dipping?
-                                 // Let's say we just damage everyone in radius.
-                                 // Since `applyHit` was called for the direct collider, they took damage.
-                                 // Should they take more? Maybe. 
-                                 // Let's skip the direct hit target from splash loop if we could identify them easily.
-                                 // But we didn't store who was hit.
-                                 // So let's just not apply hit in the loop above if it has blastRadius, and do it all here?
-                                 // No, `hitSomething` trigger is needed.
-                                 
-                                 // Simplification: Direct hit deals 2. Splash deals 2. If you are hit direct, you take 2 (above) + 2 (here) = 4?
-                                 // Maybe missiles do 2 damage total. Direct hit doesn't deal damage, just triggers explosion?
-                                 // Let's keep it simple. Direct hit deals damage. 
-                                 // Splash deals damage to OTHERS.
                                  const isDirectHit = d < (('size' in t) ? t.size.width/2 : 20); 
                                  if (!isDirectHit) {
                                       t.health -= splashDamage;
                                       t.lastHitTime = now;
                                       g.damageNumbers.push({id: `splash-${now}-${Math.random()}`, text: Math.round(splashDamage).toString(), position: t.position, createdAt: now, duration: 600, color: '#fca5a5'});
                                       if (t.health <= 0) {
-                                          // Handle death (duplicate code, should refactor but keeping inline for speed)
                                           t.status = 'dead';
                                           if ('type' in t && t.type === 'enemy') {
                                               g.player.score += 50;
@@ -1215,7 +867,6 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                              }
                          });
                     }
-                    
                     p.damage = 0; // Destroy projectile
                 }
             } else {
@@ -1245,49 +896,57 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         g.enemies = g.enemies.filter(e => e.status !== 'dead');
     };
 
-    const fireMissile = () => {
-        const player = game.current.player;
+    const fireMissile = (ownerId: string, isOverpowered: boolean = false) => {
         const g = game.current;
-        
-        // Target acquisition
+        const source = ownerId === 'player' ? g.player : g.boss;
+        if (!source || source.status !== 'active') return;
+
         let targetId = undefined;
         let minD = 9999;
         
-        // Find closest enemy/boss
-        if (g.boss && g.boss.status === 'active') {
-             targetId = g.boss.id;
+        if (ownerId === 'player') {
+            // Player tracking Boss/Enemy
+            if (g.boss && g.boss.status === 'active') {
+                 targetId = g.boss.id;
+            } else {
+                g.enemies.forEach(e => {
+                    if (e.status !== 'active') return;
+                    const d = Math.hypot(e.position.x - source.position.x, e.position.y - source.position.y);
+                    if (d < minD) { minD = d; targetId = e.id; }
+                });
+            }
         } else {
-            g.enemies.forEach(e => {
-                if (e.status !== 'active') return;
-                const d = Math.hypot(e.position.x - player.position.x, e.position.y - player.position.y);
-                if (d < minD) {
-                    minD = d;
-                    targetId = e.id;
-                }
-            });
+            // Boss tracking Player
+            if (g.player.status === 'active') {
+                targetId = g.player.id;
+            }
         }
 
-        // Random spread launch angle
-        const spread = (Math.random() - 0.5) * 60; // +/- 30 degrees
-        const angle = player.turretAngle + spread;
+        const spread = (Math.random() - 0.5) * 60;
+        const angle = source.turretAngle + spread;
         const rad = angle * (Math.PI/180);
         
+        const speed = MISSILE_SPEED * (isOverpowered ? 1.5 : 1);
+        const damage = isOverpowered ? 4 : (ownerId === 'boss' ? 2 : 2);
+        const radius = isOverpowered ? 60 : (ownerId === 'boss' ? 30 : 40);
+        const color = isOverpowered ? '#fbbf24' : (ownerId === 'boss' ? '#a855f7' : '#ef4444');
+
         game.current.projectiles.push({
             id: `missile-${Date.now()}-${Math.random()}`,
-            ownerId: 'player',
-            position: { ...player.position },
+            ownerId: ownerId,
+            position: { ...source.position },
             angle: angle,
-            velocity: { x: Math.cos(rad) * MISSILE_SPEED, y: Math.sin(rad) * MISSILE_SPEED },
+            velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed },
             size: { width: 10, height: 6 },
-            damage: 2,
-            blastRadius: 40,
+            damage: damage,
+            blastRadius: radius,
             isHoming: true,
-            turnRate: 8, // Degrees per frame roughly
+            turnRate: 8,
             targetId: targetId,
-            color: '#ef4444'
+            color: color
         });
         
-        audio.play('shot_4', player.position.x); // Distinctive sound
+        audio.play('rocketLaunch', source.position.x);
     };
 
     const fireProjectileAt = (position: Vector, angle: number, ownerId: string) => {
@@ -1483,6 +1142,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 audio.play('abilityReady'); // Or a launch sound
             } else if (id === 'timeStop') {
                 audio.play('chronoActive');
+                // Synergy: Temporal Sunder if Overdrive is active
+                const overdrive = game.current.abilities.find(a => a.id === 'overdrive');
+                if (overdrive && overdrive.state === 'active') {
+                    game.current.enemies.forEach(e => {
+                        if (e.status === 'active') {
+                            e.health -= 10;
+                            game.current.damageNumbers.push({
+                                id: `sunder-${Date.now()}-${e.id}`,
+                                text: '10',
+                                position: { x: e.position.x, y: e.position.y - 30 },
+                                createdAt: Date.now(),
+                                duration: 800,
+                                color: '#f59e0b'
+                            });
+                        }
+                    });
+                    game.current.screenShake = Math.max(game.current.screenShake, 15);
+                }
             } else {
                 audio.play('uiClick');
             }
@@ -1588,3 +1265,82 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 };
 
 export default GameScreen;
+
+function updateEnemyAI(e: TankType, player: TankType, now: number, timeScale: number, onFire: () => void): void {
+    // Basic AI Implementation
+    if (e.status !== 'active' || player.status !== 'active') return;
+
+    const dist = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
+    const angleToPlayer = Math.atan2(player.position.y - e.position.y, player.position.x - e.position.x) * (180/Math.PI);
+    
+    // Smooth Turret Rotation
+    let angleDiff = angleToPlayer - e.turretAngle;
+    while (angleDiff <= -180) angleDiff += 360;
+    while (angleDiff > 180) angleDiff -= 360;
+    e.turretAngle += angleDiff * 0.1 * timeScale;
+    
+    // State Switching
+    if (now > (e.aiStateTimer || 0)) {
+        e.aiStateTimer = now + 1000 + Math.random() * 2000;
+        const rand = Math.random();
+        if (dist > 400) e.aiMode = 'engage';
+        else if (dist < 150) e.aiMode = 'flank';
+        else e.aiMode = rand > 0.6 ? 'strafe' : 'engage';
+        
+        if (e.aiMode === 'strafe') e.aiStrafeDir = Math.random() > 0.5 ? 1 : -1;
+    }
+
+    // Movement
+    const speed = (e.tier === 'intermediate' ? 1.5 : 2.0) * timeScale;
+    let moveAngle = e.angle;
+    let shouldMove = false;
+
+    if (e.aiMode === 'engage') {
+         // Move towards player, but maintain distance
+         if (dist > 250) {
+             moveAngle = angleToPlayer;
+             shouldMove = true;
+         } else if (dist < 100) {
+             moveAngle = angleToPlayer + 180;
+             shouldMove = true;
+         }
+    } else if (e.aiMode === 'strafe') {
+        moveAngle = angleToPlayer + 90 * (e.aiStrafeDir || 1);
+        shouldMove = true;
+    } else if (e.aiMode === 'flank') {
+        moveAngle = angleToPlayer + 180 + (Math.random() - 0.5) * 60;
+        shouldMove = true;
+    }
+
+    if (shouldMove) {
+        // Smooth body rotation towards movement direction
+        let bodyDiff = moveAngle - e.angle;
+        while (bodyDiff <= -180) bodyDiff += 360;
+        while (bodyDiff > 180) bodyDiff -= 360;
+        e.angle += bodyDiff * 0.05 * timeScale;
+
+        const rad = e.angle * (Math.PI/180);
+        const vx = Math.cos(rad) * speed;
+        const vy = Math.sin(rad) * speed;
+        
+        e.position.x += vx;
+        e.position.y += vy;
+        e.velocity = {x: vx, y: vy};
+        
+        // Bounds
+        e.position.x = Math.max(40, Math.min(ARENA_WIDTH-40, e.position.x));
+        e.position.y = Math.max(40, Math.min(ARENA_HEIGHT-40, e.position.y));
+    } else {
+        e.velocity = {x:0, y:0};
+    }
+
+    // Firing Logic
+    const fireRate = e.tier === 'intermediate' ? 1200 : 2000;
+    if (now - (e.lastFireTime || 0) > fireRate) {
+        // Only fire if reasonably aiming at player
+        if (Math.abs(angleDiff) < 30 && dist < 600) {
+            e.lastFireTime = now;
+            onFire(); // Calls back to main loop to spawn projectile
+        }
+    }
+}
