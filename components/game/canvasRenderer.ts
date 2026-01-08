@@ -1157,6 +1157,36 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, anims: Animation[]
             ctx.stroke();
             ctx.globalCompositeOperation = 'source-over';
 
+        } else if (anim.type === 'lightning') {
+            if (!anim.targetPosition) return;
+            const start = { x: 0, y: 0 }; // relative to translate(anim.position)
+            const end = { x: anim.targetPosition.x - anim.position.x, y: anim.targetPosition.y - anim.position.y };
+            const dist = Math.hypot(end.x, end.y);
+            
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = anim.color || '#00F0FF';
+            ctx.strokeStyle = anim.color || '#00F0FF';
+            ctx.lineWidth = 3 * (1 - progress);
+            
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            
+            // Jagged line
+            const segments = Math.floor(dist / 20);
+            for(let i=0; i<segments; i++) {
+                const t = (i + 1) / segments;
+                const base = { x: start.x + end.x * t, y: start.y + end.y * t };
+                const jitter = (1 - progress) * 20;
+                const offset = { x: (Math.random() - 0.5) * jitter, y: (Math.random() - 0.5) * jitter };
+                if (i === segments - 1) {
+                    ctx.lineTo(end.x, end.y);
+                } else {
+                    ctx.lineTo(base.x + offset.x, base.y + offset.y);
+                }
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
         } else if (anim.type === 'mineExplosion') {
             const count = 12;
             

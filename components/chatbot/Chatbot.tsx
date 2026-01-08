@@ -1,6 +1,7 @@
-// Chatbot.tsx
+
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '../../types';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface ChatbotProps {
   messages: ChatMessage[];
@@ -9,37 +10,23 @@ interface ChatbotProps {
   onClose: () => void;
 }
 
-/**
- * Simple parser for **bold**, *italic*, and basic [links](url).
- * Keeps it safe: returns React nodes and avoids dangerouslySetInnerHTML.
- */
 const renderFormattedText = (text: string): React.ReactNode => {
   if (!text) return null;
-
-  // Turn links into clickable anchors
   const linkified = text.split(/(\[.*?\]\(.*?\))/g);
-
   return linkified.map((chunk, i) => {
     const linkMatch = chunk.match(/^\[(.*?)\]\((.*?)\)$/);
     if (linkMatch) {
       const [, label, url] = linkMatch;
       return (
-        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="underline decoration-cyan-300/50">
+        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:text-cyan-100 underline decoration-cyan-500/50 underline-offset-4 transition-colors">
           {label}
         </a>
       );
     }
-
-    // Handle bold (**text**) and italic (*text*). We need to split in order.
     const parts = chunk.split(/(\*\*.*?\*\*|\*.*?\*)/g);
-
     return parts.map((part, j) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={`${i}-${j}`} className="font-bold">{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith('*') && part.endsWith('*')) {
-        return <em key={`${i}-${j}`} className="italic">{part.slice(1, -1)}</em>;
-      }
+      if (part.startsWith('**') && part.endsWith('**')) return <strong key={`${i}-${j}`} className="text-white font-black tracking-wide text-glow-cyan">{part.slice(2, -2)}</strong>;
+      if (part.startsWith('*') && part.endsWith('*')) return <em key={`${i}-${j}`} className="text-cyan-200 italic">{part.slice(1, -1)}</em>;
       return <span key={`${i}-${j}`}>{part}</span>;
     });
   });
@@ -49,198 +36,165 @@ const Chatbot: React.FC<ChatbotProps> = ({ messages, isLoading, onSend, onClose 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const audio = useAudio();
 
-  // Auto-scroll smoothly to bottom when messages change
-  const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => scrollToBottom(true), [messages, isLoading]);
+  useEffect(() => scrollToBottom(), [messages, isLoading]);
 
-  // Close on Escape, focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      // Ctrl+Enter to send quicker
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && input.trim()) {
-        e.preventDefault();
-        handleSend();
-      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input]);
+  }, [onClose]);
 
-  const handleSend = (e?: React.FormEvent | null) => {
+  // Sound effects for messages
+  useEffect(() => {
+      if (messages.length > 0) {
+          const last = messages[messages.length - 1];
+          if (last.sender === 'bot') {
+              audio.play('uiToggle');
+          }
+      }
+  }, [messages, audio]);
+
+  const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
+    
+    audio.play('uiClick');
     onSend(trimmed);
     setInput('');
-    // little delay so autoscroll sees the new "sending" state
-    setTimeout(() => scrollToBottom(true), 40);
   };
 
-  // Simple accessible live region id
-  const liveId = 'chatbot-live-messages';
-
   return (
-    <div
-      ref={containerRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="chatbot-title"
-    >
-      {/* dim backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        {/* Main Window */}
+        <div className="relative w-full max-w-2xl h-[70vh] flex flex-col bg-[#050a10] border border-cyan-500/30 shadow-[0_0_40px_rgba(0,240,255,0.15)] overflow-hidden"
+             style={{ clipPath: "polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)" }}>
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-cyan-950/20 border-b border-cyan-500/20 relative">
+                <div className="absolute top-0 left-0 w-20 h-[2px] bg-cyan-500 shadow-[0_0_10px_#00f0ff]"></div>
+                
+                <div className="flex items-center gap-4">
+                    <div className="relative">
+                        <div className="w-10 h-10 border-2 border-cyan-500/50 flex items-center justify-center bg-black/50 overflow-hidden rounded-sm">
+                            <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="square" strokeLinejoin="miter" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-500 shadow-[0_0_5px_#22c55e] animate-pulse"></div>
+                    </div>
+                    <div>
+                        <h2 className="font-orbitron font-bold text-cyan-400 tracking-wider text-sm">CMD. DARLEK</h2>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-cyan-700">LINK_ESTABLISHED</span>
+                            <span className="w-12 h-1 bg-cyan-900/50 overflow-hidden flex gap-0.5">
+                                <span className="w-full bg-cyan-500 animate-[pulse_1s_infinite]"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
 
-      <div
-        className="relative w-full max-w-3xl h-[80vh] bg-black/80 border border-[var(--color-border)] rounded-lg shadow-2xl overflow-hidden flex flex-col box-glow-cyan"
-      >
-        {/* Header */}
-        <header className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-600 to-cyan-800 flex items-center justify-center text-white font-orbitron text-lg border-2 border-[var(--color-primary-cyan)]/50">
-              D
+                <button onClick={onClose} className="p-2 hover:bg-red-500/10 group transition-colors rounded-sm border border-transparent hover:border-red-500/30">
+                    <svg className="w-6 h-6 text-cyan-700 group-hover:text-red-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
-            <div>
-              <h2 id="chatbot-title" className="text-[var(--color-primary-cyan)] text-lg font-semibold font-orbitron tracking-wider text-glow-cyan">
-                Commander Darlek
-              </h2>
-              <p className="text-xs text-[var(--color-text-medium)]">Tactical AI — transmit your orders.</p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              aria-label="Close chat"
-              className="p-2 rounded-md hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-cyan)]"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[var(--color-text-medium)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </header>
+            {/* Chat Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 relative custom-scrollbar bg-[radial-gradient(circle_at_center,rgba(0,240,255,0.03),transparent_70%)]">
+                {/* Scanlines Overlay for content area */}
+                <div className="fixed inset-0 pointer-events-none opacity-5 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+                
+                {messages.map((msg, i) => {
+                    const isBot = msg.sender === 'bot';
+                    return (
+                        <div key={i} className={`flex ${isBot ? 'justify-start' : 'justify-end'} animate-slide-up`} style={{ animationDelay: `${i * 50}ms` }}>
+                            {isBot && (
+                                <div className="mr-3 mt-1 text-[10px] font-mono text-cyan-800 hidden sm:block">
+                                    SYS<br/>MSG
+                                </div>
+                            )}
+                            <div className={`relative max-w-[85%] p-4 border text-sm font-rajdhani leading-relaxed shadow-lg backdrop-blur-md
+                                ${isBot 
+                                    ? 'bg-black/60 border-cyan-500/30 text-cyan-100 rounded-tr-xl rounded-bl-xl border-l-2 border-l-cyan-500' 
+                                    : 'bg-cyan-900/10 border-white/10 text-white rounded-tl-xl rounded-br-xl border-r-2 border-r-[var(--color-primary-magenta)]'}
+                            `}>
+                                {/* Decorative corners */}
+                                <div className={`absolute top-0 w-2 h-2 border-t border-current opacity-50 ${isBot ? 'left-0 border-l' : 'right-0 border-r'}`}></div>
+                                <div className={`absolute bottom-0 w-2 h-2 border-b border-current opacity-50 ${isBot ? 'right-0 border-r' : 'left-0 border-l'}`}></div>
 
-        {/* Messages area */}
-        <main className="flex-1 overflow-y-auto px-5 py-4 space-y-4" aria-live="polite" aria-atomic="false" id={liveId}>
-          {messages.map((msg, idx) => {
-            const isUser = msg.sender === 'user';
-            return (
-              <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                {!isUser && (
-                  <div className="mr-3">
-                    <div className="w-9 h-9 rounded-full bg-cyan-700 border-2 border-[var(--color-border-glow)] text-cyan-200 font-bold flex items-center justify-center font-orbitron">D</div>
-                  </div>
+                                {isBot ? (
+                                    <div className="prose prose-invert prose-p:my-1 prose-headings:text-cyan-300 prose-strong:text-cyan-300">
+                                        {renderFormattedText(msg.text)}
+                                    </div>
+                                ) : (
+                                    <span>{msg.text}</span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                {isLoading && (
+                    <div className="flex justify-start animate-pulse">
+                        <div className="bg-black/60 border border-cyan-500/30 px-4 py-3 rounded-tr-xl rounded-bl-xl flex gap-1 items-center">
+                            <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-bounce"></span>
+                            <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-bounce delay-100"></span>
+                            <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-bounce delay-200"></span>
+                        </div>
+                    </div>
                 )}
-
-                <div
-                  className={`max-w-[78%] px-4 py-2 rounded-lg text-base leading-snug ${isUser ? 'bg-[var(--color-primary-magenta)]/30 text-fuchsia-100 self-end' : 'bg-cyan-600/10 text-cyan-100'} `}
-                  style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
-                >
-                  {isUser ? <span>{msg.text}</span> : <div className="prose prose-invert">{renderFormattedText(msg.text)}</div>}
-                </div>
-              </div>
-            );
-          })}
-
-          {isLoading && (
-            <div className="flex items-start gap-3">
-              <div className="mr-3">
-                <div className="w-9 h-9 rounded-full bg-cyan-700 border-2 border-[var(--color-border-glow)] text-cyan-200 font-bold flex items-center justify-center font-orbitron">D</div>
-              </div>
-              <div className="max-w-[55%] px-4 py-2 rounded-lg bg-cyan-600/10 text-cyan-100">
-                <div className="inline-flex items-center gap-2">
-                  <span className="dot dot-1" />
-                  <span className="dot dot-2" />
-                  <span className="dot dot-3" />
-                </div>
-              </div>
+                <div ref={messagesEndRef} />
             </div>
-          )}
 
-          <div ref={messagesEndRef} />
-        </main>
-
-        {/* Input area */}
-        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex-shrink-0 px-5 py-4 border-t border-[var(--color-border)] bg-black/60">
-          <div className="flex gap-3 items-center">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Transmit your query..."
-              disabled={isLoading}
-              aria-label="Chat input"
-              className="flex-1 bg-stone-900/70 border border-stone-700 px-4 py-2 rounded-md text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-magenta)] placeholder:text-stone-400"
-              onKeyDown={(e) => {
-                // Allow shift+enter for newline (if we later support multiline); prevent default for Enter to send.
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!isLoading && input.trim()) handleSend();
-                }
-              }}
-            />
-
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="px-5 py-2 rounded-md font-orbitron uppercase tracking-wider text-sm font-semibold transition bg-transparent border border-transparent disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[var(--color-primary-magenta)]/20 hover:enabled:border-[var(--color-primary-magenta)]/80 hover:enabled:text-white"
-               style={{
-                borderColor: input.trim() ? 'var(--color-primary-magenta)' : 'var(--color-text-dark)',
-                color: input.trim() ? 'var(--color-primary-magenta)' : 'var(--color-text-dark)',
-              }}
-            >
-              Send
-            </button>
-          </div>
-        </form>
-
-        {/* Styles */}
+            {/* Input Area */}
+            <div className="p-4 bg-black/80 border-t border-cyan-500/20 backdrop-blur-xl">
+                <form onSubmit={handleSend} className="flex gap-4">
+                    <div className="relative flex-1 group">
+                        <div className="absolute inset-0 bg-cyan-500/5 clip-corner-4 pointer-events-none group-focus-within:bg-cyan-500/10 transition-colors"></div>
+                        <input 
+                            ref={inputRef}
+                            type="text" 
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="TRANSMIT MESSAGE..."
+                            className="w-full bg-transparent border border-cyan-900/50 text-cyan-100 placeholder-cyan-800/50 px-4 py-3 font-orbitron text-sm focus:border-cyan-500/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,240,255,0.1)] transition-all clip-corner-2"
+                            disabled={isLoading}
+                        />
+                        {/* Blinking cursor effect at end (fake) */}
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-4 bg-cyan-500/50 animate-pulse pointer-events-none hidden group-focus-within:block"></div>
+                    </div>
+                    <button 
+                        type="submit" 
+                        disabled={isLoading || !input.trim()}
+                        className="px-6 bg-cyan-500/10 border border-cyan-500/50 text-cyan-400 font-orbitron font-bold tracking-wider hover:bg-cyan-500 hover:text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed clip-corner-4 shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)]"
+                    >
+                        SEND
+                    </button>
+                </form>
+            </div>
+        </div>
+        
         <style>{`
-          /* Dot loader */
-          .dot {
-            display:inline-block;
-            width:8px;
-            height:8px;
-            border-radius:999px;
-            background:var(--color-primary-cyan);
-            opacity:0.85;
-            transform: translateY(0);
-            animation: dot-bob 1s infinite ease-in-out;
-          }
-          .dot-2 { animation-delay: 0.12s; }
-          .dot-3 { animation-delay: 0.24s; }
-
-          @keyframes dot-bob {
-            0% { transform: translateY(0); opacity: 0.8; }
-            50% { transform: translateY(-6px); opacity: 1; }
-            100% { transform: translateY(0); opacity: 0.8; }
-          }
-
-          /* Reduced-motion respect */
-          @media (prefers-reduced-motion: reduce) {
-            .dot, .scan-ring, * { animation: none !important; transition: none !important; }
-            main { scroll-behavior: auto !important; }
-          }
-
-          /* Prose tweaks for rendered markdown-like text */
-          .prose { color: #E6F7FF; }
-          .prose strong { color: #fff; font-weight: 700; }
-          .prose em { color: #dbeafe; font-style: italic; }
-          .prose a { color: var(--color-primary-cyan); text-decoration: underline; }
-
+            .text-glow-cyan { text-shadow: 0 0 10px rgba(0, 240, 255, 0.5); }
+            .clip-corner-2 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%); }
+            .clip-corner-4 { clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+            .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #0e7490; border-radius: 2px; }
         `}</style>
-      </div>
     </div>
   );
 };
 
 export default Chatbot;
+    

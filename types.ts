@@ -91,7 +91,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -100,10 +100,10 @@ export interface Animation {
   width?: number;
   height?: number;
   opacity?: number;
-  targetPosition?: Vector; // For beams
+  targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'timeStop' | 'damageConverter';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter';
 
 export interface Ability {
   id: AbilityId;
@@ -288,4 +288,5 @@ export interface UIState {
     gameOver: boolean;
     duelWon: boolean;
     abilities: Ability[];
+    damageConverterCharge: number;
 }

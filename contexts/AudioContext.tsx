@@ -69,6 +69,12 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
     ] 
   },
   abilityReady: { layers: [{ type: 'sine', freqStart: 800, freqEnd: 1600, gain: 0.08, duration: 0.3 }] },
+  teslaZap: { 
+    layers: [
+        { type: 'sawtooth', freqStart: 1200, freqEnd: 400, gain: 0.15, duration: 0.15, modFreq: 50 },
+        { type: 'square', freqStart: 2000, freqEnd: 1000, gain: 0.1, duration: 0.1 } 
+    ] 
+  },
 
   // Boss
   bossSpawn: { layers: [{ type: 'sawtooth', freqStart: 60, freqEnd: 180, gain: 0.12, duration: 4.0, modFreq: 5 }] },
