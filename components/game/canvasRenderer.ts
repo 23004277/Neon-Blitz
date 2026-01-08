@@ -5,6 +5,32 @@ export const degToRad = (d: number) => d * (Math.PI / 180);
 
 const SPAWN_DURATION = 1000;
 
+// Asset Management
+const powerUpImages: Record<string, HTMLImageElement> = {};
+
+// Exact file paths as requested
+const assetMap: Record<string, string> = {
+    'dualCannon': 'TemporaryPowerups/DualBarrel.png',
+    'shield': 'TemporaryPowerups/Shield.png',
+    'regensule': 'TemporaryPowerups/HealCapsule.png',
+    'lifeLeech': 'TemporaryPowerups/LifeLeech.png',
+    'homingMissiles': 'TemporaryPowerups/Rocket.png',
+    // Fallback for types without explicit assets
+    'reflectorField': 'TemporaryPowerups/Shield.png' 
+};
+
+export const loadGameAssets = () => {
+    // Only load if not already loaded
+    if (Object.keys(powerUpImages).length > 0) return;
+
+    Object.entries(assetMap).forEach(([type, src]) => {
+        const img = new Image();
+        // Ensure path starts with slash for public folder access
+        img.src = src.startsWith('/') ? src : `/${src}`;
+        powerUpImages[type] = img;
+    });
+};
+
 export function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, cellSize: number) {
     ctx.save();
     ctx.strokeStyle = '#111827'; 
@@ -329,6 +355,36 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
     const cFill = (col: string) => isHit ? '#ffffff' : col;
     const cStroke = (col: string) => isHit ? '#ffffff' : col;
 
+    // --- ENEMY POWER-UP AURAS ---
+    if (!isPlayer && tank.activePowerUp) {
+        ctx.save();
+        if (tank.activePowerUp === 'lifeLeech') {
+            // Red vampiric aura
+            const pulse = Math.sin(now * 0.005) * 0.2 + 0.5;
+            ctx.strokeStyle = `rgba(239, 68, 68, ${pulse})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.lineDashOffset = -now * 0.02;
+            ctx.beginPath();
+            ctx.arc(0, 0, 30, 0, Math.PI*2);
+            ctx.stroke();
+        } else if (tank.activePowerUp === 'regensule') {
+            // Green healing aura
+            const pulse = Math.sin(now * 0.003) * 0.2 + 0.4;
+            ctx.fillStyle = `rgba(74, 222, 128, ${pulse * 0.3})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, 25, 0, Math.PI*2);
+            ctx.fill();
+            // Floating crosses
+            if (now % 600 < 30) {
+                 ctx.fillStyle = '#4ade80';
+                 ctx.fillRect(15, -15, 6, 2);
+                 ctx.fillRect(17, -17, 2, 6);
+            }
+        }
+        ctx.restore();
+    }
+
     // --- DAMAGE CONVERTER AURA (Flux Matrix) ---
     // If the tank has stored charge, visualize it as an aura
     if (tank.damageConverterCharge && tank.damageConverterCharge > 0) {
@@ -565,9 +621,40 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             
             ctx.fillStyle = cFill('#292524');
             ctx.fillRect(0, -5, 28, 10);
-            ctx.fillStyle = cFill(primary);
-            ctx.fillRect(26, -6, 4, 12);
             
+            // DUAL BARREL RENDERING
+            if (tank.activePowerUp === 'dualCannon') {
+                 ctx.fillStyle = cFill('#292524');
+                 // Extra barrels
+                 ctx.fillRect(0, -8, 28, 4);
+                 ctx.fillRect(0, 4, 28, 4);
+                 
+                 if (!isHit) {
+                    ctx.fillStyle = primary;
+                    ctx.fillRect(26, -8, 4, 4);
+                    ctx.fillRect(26, 4, 4, 4);
+                 }
+            } else {
+                ctx.fillStyle = cFill(primary);
+                ctx.fillRect(26, -6, 4, 12);
+            }
+            
+            // MISSILE POD RENDERING
+            if (tank.activePowerUp === 'homingMissiles') {
+                ctx.save();
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-5, -20, 10, 6);
+                ctx.fillRect(-5, 14, 10, 6);
+                // Missiles
+                ctx.fillStyle = '#ef4444';
+                const count = Math.min(3, Math.ceil((tank.homingMissileCount || 0) / 3));
+                for(let i=0; i<count; i++) {
+                     ctx.beginPath(); ctx.arc(-2 + i*3, -17, 2, 0, Math.PI*2); ctx.fill();
+                     ctx.beginPath(); ctx.arc(-2 + i*3, 17, 2, 0, Math.PI*2); ctx.fill();
+                }
+                ctx.restore();
+            }
+
             ctx.fillStyle = cFill(dark);
             ctx.strokeStyle = cStroke(primary);
             ctx.fillRect(-10, -10, 20, 20);
@@ -612,16 +699,40 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fill();
             ctx.stroke();
 
-            ctx.fillStyle = cFill('#292524');
-            ctx.fillRect(0, -3, 22, 6); 
-
-            if (!isHit) {
-                ctx.fillStyle = primary;
-                ctx.fillRect(8, -1, 10, 2); 
+            // DUAL CANNON - Basic tank
+            if (tank.activePowerUp === 'dualCannon') {
+                ctx.fillStyle = cFill('#292524');
+                ctx.fillRect(0, -6, 22, 4); 
+                ctx.fillRect(0, 2, 22, 4); 
+                if (!isHit) {
+                    ctx.fillStyle = primary;
+                    ctx.fillRect(20, -5, 4, 2);
+                    ctx.fillRect(20, 3, 4, 2);
+                }
+            } else {
+                ctx.fillStyle = cFill('#292524');
+                ctx.fillRect(0, -3, 22, 6); 
+                if (!isHit) {
+                    ctx.fillStyle = primary;
+                    ctx.fillRect(8, -1, 10, 2); 
+                }
+                ctx.fillStyle = cFill(primary);
+                ctx.fillRect(20, -2, 4, 4);
             }
             
-            ctx.fillStyle = cFill(primary);
-            ctx.fillRect(20, -2, 4, 4);
+            // MISSILE POD - Basic Tank
+            if (tank.activePowerUp === 'homingMissiles') {
+                ctx.save();
+                ctx.rotate(-Math.PI/2);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-8, -8, 16, 6);
+                ctx.fillStyle = '#ef4444';
+                const count = Math.min(4, Math.ceil((tank.homingMissileCount || 0) / 2));
+                 for(let i=0; i<count; i++) {
+                     ctx.beginPath(); ctx.arc(-6 + i*4, -5, 2, 0, Math.PI*2); ctx.fill();
+                }
+                ctx.restore();
+            }
         }
     }
 
@@ -638,6 +749,17 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         
         ctx.fillStyle = `rgba(6, 182, 212, 0.05)`;
         ctx.fill();
+        
+        // Render Shield Pips for Enemies too
+        const maxShield = 5; // Assuming 5 is max for enemy powerup
+        const pips = tank.shieldHealth;
+        for(let i=0; i<pips; i++) {
+             const angle = (i / maxShield) * Math.PI - Math.PI/2;
+             const px = Math.cos(angle) * 36;
+             const py = Math.sin(angle) * 36;
+             ctx.fillStyle = '#06b6d4';
+             ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2); ctx.fill();
+        }
     }
 
     ctx.restore();
@@ -896,7 +1018,7 @@ export function drawDamageNumbers(ctx: CanvasRenderingContext2D, nums: DamageNum
         const val = parseInt(num.text);
         // Assuming base dmg is ~2, hits > 3 are high damage (crits/overdrive)
         const isCrit = !isNaN(val) && val >= 4; 
-        const isHeal = num.text === 'REPAIR' || num.text.includes('+');
+        const isHeal = num.text === 'REPAIR' || num.text.includes('+') || num.text === 'LEECH';
         
         ctx.font = (isCrit || isHeal) 
             ? '900 24px "Orbitron", sans-serif' 
@@ -1261,6 +1383,19 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, anims: Animation[]
                 ctx.lineTo(Math.cos(angle)*(dist+15), Math.sin(angle)*(dist+15));
                 ctx.stroke();
             }
+        } else if (anim.type === 'dashTrail') {
+             // Basic fade out for healing particles
+             ctx.fillStyle = anim.color || '#fff';
+             ctx.globalAlpha = 1 - progress;
+             const size = 3 * (1-progress);
+             ctx.fillRect(-size/2, -size/2, size, size);
+        } else if (anim.type === 'shieldHit') {
+             ctx.strokeStyle = anim.color || '#06b6d4';
+             ctx.lineWidth = 2;
+             ctx.globalAlpha = 1 - progress;
+             ctx.beginPath();
+             ctx.arc(0, 0, 35 + (progress * 10), 0, Math.PI * 2);
+             ctx.stroke();
         }
         ctx.restore();
     });
@@ -1269,30 +1404,98 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, anims: Animation[]
 export function drawPowerUp(ctx: CanvasRenderingContext2D, p: PowerUp, now: number) {
     ctx.save();
     ctx.translate(p.position.x, p.position.y);
-    const color = p.type === 'shield' ? '#06b6d4' : '#eab308';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-10, -10, 20, 20);
-    ctx.fillStyle = color;
-    ctx.font = '12px monospace';
-    ctx.fillText(p.type.charAt(0).toUpperCase(), -4, 4);
+    
+    // Floating animation
+    const bob = Math.sin(now * 0.003) * 5;
+    ctx.translate(0, bob);
+
+    const img = powerUpImages[p.type];
+    const hasImage = img && img.complete && img.naturalWidth !== 0;
+
+    // Type-specific colors for glow/fallback
+    let color = '#ffffff';
+    let label = '?';
+    switch(p.type) {
+        case 'shield': color = '#06b6d4'; label = 'S'; break; // Cyan
+        case 'dualCannon': color = '#f97316'; label = 'D'; break; // Orange
+        case 'regensule': color = '#4ade80'; label = '+'; break; // Green
+        case 'lifeLeech': color = '#ef4444'; label = 'L'; break; // Red
+        case 'homingMissiles': color = '#eab308'; label = 'M'; break; // Yellow
+        case 'reflectorField': color = '#a855f7'; label = 'R'; break; // Purple
+    }
+
+    if (hasImage) {
+        // Draw Glow
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 15;
+        
+        // Draw Image (assuming ~32x32 size, centered)
+        const size = 32;
+        ctx.drawImage(img, -size/2, -size/2, size, size);
+        
+        // Add a subtle ring
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6 + Math.sin(now * 0.005) * 0.2; // Pulsing ring
+        ctx.beginPath();
+        ctx.arc(0, 0, size/2 + 4, 0, Math.PI * 2);
+        ctx.stroke();
+    } else {
+        // Fallback rendering
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        
+        // Rotating Box
+        ctx.save();
+        ctx.rotate(now * 0.001);
+        ctx.strokeRect(-12, -12, 24, 24);
+        ctx.restore();
+        
+        // Inner Fill
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.2;
+        ctx.fillRect(-12, -12, 24, 24);
+        ctx.globalAlpha = 1.0;
+
+        // Letter
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px "Orbitron"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, 0, 0);
+        
+        // Inner pulsing circle
+        ctx.globalAlpha = 0.1 + Math.abs(Math.sin(now * 0.002)) * 0.1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 15, 0, Math.PI*2);
+        ctx.fill();
+    }
+    
     ctx.restore();
 }
 
 export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone[], now: number) {
     zones.forEach(z => {
-        ctx.strokeStyle = '#3b82f6';
+        ctx.save();
+        ctx.translate(z.position.x, z.position.y);
+        
+        ctx.strokeStyle = z.type === 'chrono' ? '#3b82f6' : '#22c55e';
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.arc(z.position.x, z.position.y, z.radius, 0, Math.PI*2); ctx.stroke();
-        ctx.setLineDash([]);
+        
+        // Rotating Effect
+        ctx.rotate(now * 0.001);
+
+        ctx.beginPath(); 
+        // Use local coordinates since we translated
+        ctx.arc(0, 0, z.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.fillStyle = z.type === 'chrono' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)';
+        ctx.fill();
+
+        ctx.restore();
     });
 }
-
-export function drawBarrageReticle(ctx: CanvasRenderingContext2D, pos: Vector, r: number, now: number) {}
-export function drawChronoReticle(ctx: CanvasRenderingContext2D, pos: Vector, r: number, now: number) {}
-export function drawBarrageWarning(ctx: CanvasRenderingContext2D, pos: Vector, r: number, p: number, now: number) {}
-export function drawBossLaser(ctx: CanvasRenderingContext2D, boss: Boss, now: number) {}
-export function drawTimeStopOverlay(ctx: CanvasRenderingContext2D) {}
-export function drawMinion(ctx: CanvasRenderingContext2D, m: Minion, now: number) {}
-export function drawChronoShards(ctx: CanvasRenderingContext2D, shards: any[], now: number) {}

@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber } from '../../types';
+import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType } from '../../types';
 import { Difficulty } from '../../types'; // Ensure Difficulty is imported
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAudio } from '../../contexts/AudioContext';
 
 import HUD from './HUD';
 import AbilityHotbar from './AbilityHotbar';
-import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCyberBeam, drawLastStandWarning, degToRad } from './canvasRenderer';
+import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCyberBeam, drawLastStandWarning, degToRad, loadGameAssets } from './canvasRenderer';
 import Leaderboard from './Leaderboard';
 import { generateUsername } from './usernameGenerator';
 import BossHealthBar from './BossHealthBar';
@@ -142,8 +142,63 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         wave: 1, enemiesRemaining: 0, gameOver: false, duelWon: false, abilities: [], damageConverterCharge: 0
     });
 
+    // --- HELPER FUNCTIONS ---
+    const spawnPowerUp = (position: Vector) => {
+        if (Math.random() > 0.25) return; // 25% chance
+
+        const types: PowerUpType[] = ['dualCannon', 'shield', 'regensule', 'lifeLeech', 'homingMissiles'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        
+        game.current.powerUps.push({
+            id: `pup-${Date.now()}-${Math.random()}`,
+            type,
+            position: { ...position },
+            spawnTime: Date.now()
+        });
+    };
+
+    const applyPowerUp = (tank: TankType, type: PowerUpType) => {
+        tank.activePowerUp = type;
+        tank.powerUpExpireTime = Date.now() + 15000; // 15s duration
+        
+        if (type === 'shield') tank.shieldHealth = 5;
+        if (type === 'homingMissiles') tank.homingMissileCount = 10;
+        
+        // Instant visual feedback
+        game.current.animations.push({
+            id: `pup-pickup-${Date.now()}`,
+            type: 'shieldHit', // Reusing shield hit ring effect for pickup pulse
+            position: tank.position,
+            createdAt: Date.now(),
+            duration: 500,
+            color: '#fff'
+        });
+    };
+
+    const handleEnemyDeath = (e: TankType) => {
+        e.status = 'dead';
+        game.current.player.score += 50;
+        setUiState(prev => ({...prev, playerScore: game.current.player.score}));
+        
+        audio.play('explosion', e.position.x);
+        game.current.animations.push({ 
+            id: `e-die-${Date.now()}-${Math.random()}`, 
+            type: 'explosion', 
+            position: e.position, 
+            createdAt: Date.now(), 
+            duration: 500, 
+            color: '#f97316' 
+        });
+        
+        game.current.screenShake = Math.max(game.current.screenShake, 5);
+        audio.stopEngine(e.id);
+        
+        spawnPowerUp(e.position);
+    };
+
     // --- LOOP ---
     useEffect(() => {
+        loadGameAssets(); // Initialize assets
         let rafId: number;
         
         // Reset state on mount
@@ -232,6 +287,27 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (e.status === 'spawning' && e.spawnTime && now > e.spawnTime + SPAWN_DELAY) {
                 e.status = 'active';
             }
+            
+            // --- ENEMY POWER-UP LOGIC: HEAL CAPSULE (REGENSULE) ---
+            if (e.status === 'active' && e.activePowerUp === 'regensule') {
+                if (e.health < e.maxHealth) {
+                    // Regen ~2 HP per second
+                    const regenAmount = (2 * dt) / 1000;
+                    e.health = Math.min(e.maxHealth, e.health + regenAmount);
+                    
+                    // Visual feedback occasionally
+                    if (Math.random() < 0.05) {
+                        g.animations.push({
+                            id: `heal-tick-${now}-${e.id}`,
+                            type: 'dashTrail', // Reusing trail for simplicity or generic particle
+                            position: { x: e.position.x + (Math.random()*20-10), y: e.position.y + (Math.random()*20-10) },
+                            createdAt: now,
+                            duration: 300,
+                            color: '#4ade80'
+                        });
+                    }
+                }
+            }
         });
         if (g.boss && g.boss.status === 'spawning' && g.boss.spawnTime && now > g.boss.spawnTime + SPAWN_DELAY*2) {
             g.boss.status = 'active';
@@ -256,6 +332,44 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         if (Math.abs((player.damageConverterCharge || 0) - uiState.damageConverterCharge) > 1) {
              setUiState(prev => ({...prev, damageConverterCharge: player.damageConverterCharge || 0}));
         }
+
+        // 3. Powerups Logic
+        // Check Player PowerUp Expiration
+        if (player.activePowerUp && player.powerUpExpireTime && now > player.powerUpExpireTime) {
+            player.activePowerUp = null;
+            player.powerUpExpireTime = undefined;
+            audio.play('uiBack'); // Power down sound
+            // Reset temporary stats
+            player.shieldHealth = 0;
+            player.homingMissileCount = 0;
+        }
+
+        // Player Passive Effects from PowerUps
+        if (player.status === 'active' && player.activePowerUp === 'regensule') {
+             if (player.health < player.maxHealth) {
+                 player.health = Math.min(player.maxHealth, player.health + (5 * dt) / 1000);
+                 setUiState(prev => ({...prev, playerHealth: player.health}));
+             }
+        }
+
+        // Check PowerUp Pickups
+        game.current.powerUps = game.current.powerUps.filter(p => {
+            const dist = Math.hypot(player.position.x - p.position.x, player.position.y - p.position.y);
+            if (dist < player.size.width) {
+                applyPowerUp(player, p.type);
+                audio.play('abilityReady');
+                game.current.damageNumbers.push({
+                    id: `pup-text-${Date.now()}`,
+                    text: p.type.toUpperCase(),
+                    position: { ...player.position, y: player.position.y - 50 },
+                    createdAt: Date.now(),
+                    duration: 1000,
+                    color: '#fff'
+                });
+                return false; 
+            }
+            return true;
+        });
 
         // 1. Player Movement
         let playerSpeed = 0;
@@ -327,7 +441,23 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
         // AI Update
         g.enemies.forEach(e => updateEnemyAI(e, player, now, timeScale, diffConfig, () => {
-            fireProjectileAt(e.position, e.turretAngle, e.id);
+            // AI Firing Callback - Handle PowerUps
+            if (e.activePowerUp === 'homingMissiles' && (e.homingMissileCount || 0) > 0) {
+                 fireMissile(e.id, false); 
+                 e.homingMissileCount = (e.homingMissileCount || 0) - 1;
+                 if (e.homingMissileCount <= 0) e.activePowerUp = null;
+            } else if (e.activePowerUp === 'dualCannon') {
+                 // Dual Barrel Logic
+                 const offset = 10;
+                 const rad = e.turretAngle * (Math.PI/180);
+                 const perp = rad + Math.PI/2;
+                 const p1 = { x: e.position.x + Math.cos(perp) * offset, y: e.position.y + Math.sin(perp) * offset };
+                 const p2 = { x: e.position.x - Math.cos(perp) * offset, y: e.position.y - Math.sin(perp) * offset };
+                 fireProjectileAt(p1, e.turretAngle, e.id);
+                 fireProjectileAt(p2, e.turretAngle, e.id);
+            } else {
+                 fireProjectileAt(e.position, e.turretAngle, e.id);
+            }
         }));
         
         // Manage Enemy Engine Sounds (Limit to closest 3 to prevent chaos)
@@ -438,15 +568,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                                 color: '#00F0FF'
                             });
                             
-                            // Kill logic (simplified dup from collision)
+                            // Kill logic
                             if (target.health <= 0) {
-                                target.status = 'dead';
                                 if ('type' in target && target.type === 'enemy') {
-                                    g.player.score += 50;
-                                    setUiState(prev => ({...prev, playerScore: g.player.score}));
-                                    audio.play('explosion', target.position.x);
-                                    g.animations.push({ id: `e-die-${now}-${Math.random()}`, type: 'explosion', position: target.position, createdAt: now, duration: 500, color: '#f97316' });
-                                    audio.stopEngine(target.id);
+                                    handleEnemyDeath(target as TankType);
                                 } else if ('bossType' in target) {
                                      g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: target.position, createdAt: now, duration: 1000, color: 'red' });
                                      audio.play('bossExplosion');
@@ -592,13 +717,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 e.lastHitTime = now;
                 hit = true;
                 if (e.health <= 0) {
-                    e.status = 'dead';
-                    g.player.score += 50;
-                    setUiState(prev => ({...prev, playerScore: g.player.score}));
-                    audio.play('explosion', e.position.x);
-                    g.animations.push({ id: `e-die-${now}-${Math.random()}`, type: 'explosion', position: e.position, createdAt: now, duration: 500, color: '#f97316' });
-                    g.screenShake = Math.max(g.screenShake, 5);
-                    audio.stopEngine(e.id);
+                    handleEnemyDeath(e);
                 } else {
                      g.damageNumbers.push({
                         id: `beam-${now}-${e.id}`, text: Math.round(dmg).toString(), 
@@ -917,6 +1036,26 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
                 // Hit Function for AOE reuse
                 const applyHit = (target: TankType | Boss) => {
+                    // Shield Logic for Enemies
+                    if ('activePowerUp' in target && target.activePowerUp === 'shield' && (target.shieldHealth || 0) > 0) {
+                        target.shieldHealth = (target.shieldHealth || 0) - 1;
+                        audio.play('shieldHit', target.position.x);
+                        g.animations.push({
+                            id: `shield-hit-${now}-${Math.random()}`,
+                            type: 'shieldHit',
+                            position: target.position,
+                            createdAt: now,
+                            duration: 300,
+                            color: '#06b6d4'
+                        });
+                        
+                        if (target.shieldHealth <= 0) {
+                            target.activePowerUp = null; // Shield breaks
+                            audio.play('shieldBreak', target.position.x); // Assuming sound exists or default
+                        }
+                        return; // Absorb damage
+                    }
+
                     target.health -= damage;
                     target.lastHitTime = now;
                     audio.play('impact_damage', target.position.x);
@@ -933,12 +1072,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     if (target.health <= 0) {
                         target.status = 'dead';
                         if ('type' in target && target.type === 'enemy') {
-                            g.player.score += 50;
-                            setUiState(prev => ({...prev, playerScore: g.player.score}));
-                            audio.play('explosion', target.position.x);
-                            g.animations.push({ id: `e-die-${now}-${Math.random()}`, type: 'explosion', position: target.position, createdAt: now, duration: 500, color: '#f97316' });
-                            g.screenShake = Math.max(g.screenShake, 5);
-                            audio.stopEngine(target.id);
+                            handleEnemyDeath(target);
                         } else if ('bossType' in target) {
                              g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: target.position, createdAt: now, duration: 1000, color: 'red' });
                              audio.play('bossExplosion');
@@ -998,9 +1132,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                                       if (t.health <= 0) {
                                           t.status = 'dead';
                                           if ('type' in t && t.type === 'enemy') {
-                                              g.player.score += 50;
-                                              setUiState(prev => ({...prev, playerScore: g.player.score}));
-                                              audio.stopEngine(t.id);
+                                              handleEnemyDeath(t);
                                           }
                                       }
                                  }
@@ -1030,6 +1162,22 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         color: '#ff0000'
                     });
 
+                    // --- LIFE LEECH LOGIC FOR ENEMIES ---
+                    // If projectile owner is an enemy with Life Leech, heal them
+                    const shooter = g.enemies.find(e => e.id === p.ownerId);
+                    if (shooter && shooter.status === 'active' && shooter.activePowerUp === 'lifeLeech') {
+                        const healAmount = 2; // Leech 2 HP
+                        shooter.health = Math.min(shooter.maxHealth, shooter.health + healAmount);
+                        g.damageNumbers.push({
+                            id: `leech-${now}-${shooter.id}`,
+                            text: '+LEECH',
+                            position: { x: shooter.position.x, y: shooter.position.y - 30 },
+                            createdAt: now,
+                            duration: 600,
+                            color: '#ef4444' // Red text for leech
+                        });
+                    }
+
                     // --- DAMAGE CONVERTER LOGIC ---
                     const damageConverter = g.abilities.find(a => a.id === 'damageConverter');
                     if (damageConverter && damageConverter.state === 'active') {
@@ -1057,7 +1205,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     const fireMissile = (ownerId: string, isOverpowered: boolean = false) => {
         const g = game.current;
-        const source = ownerId === 'player' ? g.player : g.boss;
+        const source = ownerId === 'player' ? g.player : (ownerId === 'boss' ? g.boss : g.enemies.find(e => e.id === ownerId));
         if (!source || source.status !== 'active') return;
 
         let targetId = undefined;
@@ -1075,7 +1223,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 });
             }
         } else {
-            // Boss tracking Player
+            // Boss/Enemy tracking Player
             if (g.player.status === 'active') {
                 targetId = g.player.id;
             }
@@ -1091,8 +1239,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const damage = isOverpowered ? 4 : (isBoss ? 2 : 2);
         const radius = isOverpowered ? 60 : (isBoss ? 30 : 40);
         const color = isOverpowered ? '#fbbf24' : (isBoss ? '#a855f7' : '#ef4444');
-        // NERF: Reduced turn rate for boss missiles (easier to dodge)
-        const turnRate = isBoss ? 3 : 8;
+        // NERF: Reduced turn rate for boss missiles. Enemes use default 4.
+        const turnRate = isBoss ? 3 : (ownerId === 'player' ? 8 : 4);
 
         game.current.projectiles.push({
             id: `missile-${Date.now()}-${Math.random()}`,
@@ -1143,6 +1291,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
              damage = 2;
              speed *= 1.15;
              color = '#ef4444';
+        } else {
+            // ENEMY CONFIG
+            color = '#FF003C';
         }
 
         game.current.projectiles.push({
@@ -1179,7 +1330,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const baseHp = tier === 'intermediate' ? 30 : 15;
         const health = baseHp * diffConfig.hpMultiplier;
 
-        game.current.enemies.push({
+        const enemy: TankType = {
             id: `e-${Date.now()}`, 
             name: generateUsername(), 
             type: 'enemy', 
@@ -1201,7 +1352,20 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             aiMode: 'engage',
             aiStrafeDir: Math.random() > 0.5 ? 1 : -1,
             aiStateTimer: Date.now() + Math.random() * 2000
-        });
+        };
+
+        // --- ASSIGN RANDOM POWERUP (30% chance) ---
+        // Rocket, Heal Capsule (regensule), Shield, Life Leech, Dual Barrel
+        if (Math.random() < 0.3) {
+            const possiblePowerUps: PowerUpType[] = ['homingMissiles', 'shield', 'dualCannon', 'lifeLeech', 'regensule'];
+            const type = possiblePowerUps[Math.floor(Math.random() * possiblePowerUps.length)];
+            enemy.activePowerUp = type;
+
+            if (type === 'homingMissiles') enemy.homingMissileCount = 10;
+            if (type === 'shield') enemy.shieldHealth = 5;
+        }
+
+        game.current.enemies.push(enemy);
     };
 
     const spawnDuelEnemy = (name: string, tier: 'basic' | 'intermediate' | undefined) => {
