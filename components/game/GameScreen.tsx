@@ -288,6 +288,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     audio.stop('overdriveLoop');
                     audio.stop('beamCharge');
                     audio.stop('beamFire');
+                    audio.stop('bossLaserLoop');
                     audio.stopEngine('player'); // Stop engine sound
                     if (game.current.boss) audio.stopEngine('boss');
                 }
@@ -598,7 +599,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
                 
                 if (now > a.startTime + a.duration) {
-                     audio.stop('beamFire');
+                     audio.stop('bossLaserLoop');
                      newState = 'cooldown';
                      newStartTime = now;
                      stateChanged = true;
@@ -1035,6 +1036,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
                 boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1500), telegraphIds: telegraphIds } };
                 audio.play('bossWarning', boss.position.x);
+                audio.play('mineDeploy', boss.position.x);
             } else {
                 const telegraphIds: string[] = [];
                 const offsets = [{x:0, y:0}, {x: 60, y: 40}, {x: -60, y: 40}, {x: 60, y: -40}, {x: -60, y: -40}];
@@ -1111,12 +1113,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         }
                     });
                     game.current.telegraphs = game.current.telegraphs.filter(t => !ids.includes(t.id));
-                } else if (currentAttack === 'laserSweep') { audio.start('beamFire'); }
+                } else if (currentAttack === 'laserSweep') { audio.start('bossLaserLoop'); }
             }
         } else if (phase === 'attacking') {
             if (currentAttack === 'laserSweep') {
                 const dur = attackData?.attackDuration || 3000; const elapsed = now - phaseStartTime; const progress = elapsed / dur;
-                if (progress > 1) { audio.stop('beamFire'); boss.attackState.phase = 'idle'; boss.attackState.phaseStartTime = now; return; }
+                if (progress > 1) { audio.stop('bossLaserLoop'); boss.attackState.phase = 'idle'; boss.attackState.phaseStartTime = now; return; }
                 const start = attackData?.sweepAngleStart || 0; const end = attackData?.sweepAngleEnd || 0; const currentAngle = start + (end - start) * progress;
                 boss.turretAngle = currentAngle;
                 if (now - game.current.lastBossBeamTick > 100) { 
@@ -1714,7 +1716,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 });
 
             } else if (id === 'laserSweep') {
-                audio.start('beamFire');
+                audio.start('bossLaserLoop');
             } else if (id === 'overdrive') {
                 audio.play('overdrive');
                 audio.start('overdriveLoop');
