@@ -101,7 +101,7 @@ export function drawLaserSweep(ctx: CanvasRenderingContext2D, position: Vector, 
     ctx.shadowColor = color;
     ctx.shadowBlur = 30;
     ctx.beginPath();
-    ctx.moveTo(60, 0); // Offset from center (turret length)
+    ctx.moveTo(0, 0); // Start from the exact position passed (the tip)
     ctx.lineTo(1000, 0);
     ctx.stroke();
     
@@ -109,7 +109,7 @@ export function drawLaserSweep(ctx: CanvasRenderingContext2D, position: Vector, 
     ctx.strokeStyle = `rgba(255, 0, 0, 0.5)`; // Consistent red glow
     ctx.lineWidth = 30 + flicker * 2;
     ctx.beginPath();
-    ctx.moveTo(60, 0);
+    ctx.moveTo(0, 0);
     ctx.lineTo(1000, 0);
     ctx.stroke();
     
@@ -305,7 +305,13 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
     ctx.restore(); // End boss transform
     
     if (boss.attackState.currentAttack === 'laserSweep' && boss.attackState.phase === 'attacking') {
-         drawLaserSweep(ctx, boss.position, boss.turretAngle, '#ff0000');
+         const rad = degToRad(boss.turretAngle);
+         // Calculate tip position manually for drawLaserSweep since we are outside the transform
+         const tip = {
+             x: boss.position.x + Math.cos(rad) * 65,
+             y: boss.position.y + Math.sin(rad) * 65
+         };
+         drawLaserSweep(ctx, tip, boss.turretAngle, '#ff0000');
     }
 }
 
@@ -913,7 +919,8 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
 export function drawCyberBeam(ctx: CanvasRenderingContext2D, player: Tank, target: Vector, now: number, state: 'charging' | 'active', startTime: number, chargeDuration: number = 1500, isOverdrive: boolean = false) {
     const elapsed = now - startTime;
-    const turretLen = 28; 
+    // ADJUST TURRET LENGTH BASED ON TANK TYPE
+    const turretLen = (player.bossType === 'goliath') ? 65 : 30; 
     const rad = degToRad(player.turretAngle);
     const tipX = player.position.x + Math.cos(rad) * turretLen;
     const tipY = player.position.y + Math.sin(rad) * turretLen;
@@ -1432,10 +1439,11 @@ export function drawPowerUp(ctx: CanvasRenderingContext2D, powerUp: PowerUp, now
     ctx.shadowColor = '#fff';
 
     const img = powerUpImages[powerUp.type];
-    if (img && img.complete) {
+    // Fix: Ensure image is fully loaded and valid before drawing to prevent InvalidStateError
+    if (img && img.complete && img.naturalWidth > 0) {
         ctx.drawImage(img, -size/2, -size/2, size, size);
     } else {
-        // Fallback drawing if image not loaded
+        // Fallback drawing if image not loaded or broken
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(0, 0, 10, 0, Math.PI * 2);

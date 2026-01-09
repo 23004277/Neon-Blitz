@@ -95,6 +95,16 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   bossSpawn: { layers: [{ type: 'sawtooth', freqStart: 60, freqEnd: 180, gain: 0.12, duration: 4.0, modFreq: 5 }] },
   bossWarning: { layers: [{ type: 'sawtooth', freqStart: 400, freqEnd: 200, gain: 0.1, duration: 1.0, modFreq: 10 }] },
   bossCharge: { layers: [{ type: 'triangle', freqStart: 100, freqEnd: 600, gain: 0.1, duration: 1.5 }] },
+  
+  // NEW: Dedicated Ignition for Player Laser Sweep (Instant feedback version of Boss Charge)
+  bossLaserStart: {
+    layers: [
+        { type: 'triangle', freqStart: 100, freqEnd: 1500, gain: 0.2, duration: 0.4 }, // Fast charge up
+        { type: 'sawtooth', freqStart: 1500, freqEnd: 100, gain: 0.25, duration: 0.3, delay: 0.35 }, // Ignition
+        { type: 'noise', filterFreq: 2000, gain: 0.2, duration: 0.25, delay: 0.35 } // Blast
+    ]
+  },
+
   bossMortarFire: { 
     layers: [
       { type: 'square', freqStart: 150, freqEnd: 60, gain: 0.2, duration: 0.3 }, 
@@ -123,16 +133,19 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
         { type: 'noise', filterFreq: 300, gain: 0.3, duration: 0.6 }
     ] 
   },
+  
+  // IMPROVED RAILGUN SOUNDS
   bossRailgunCharge: { 
     layers: [
-        { type: 'triangle', freqStart: 200, freqEnd: 2000, gain: 0.1, duration: 1.5 },
-        { type: 'sawtooth', freqStart: 100, freqEnd: 1000, gain: 0.05, duration: 1.5 }
+        { type: 'sawtooth', freqStart: 150, freqEnd: 2200, gain: 0.15, duration: 1.5, modFreq: 20 },
+        { type: 'triangle', freqStart: 100, freqEnd: 1000, gain: 0.1, duration: 1.5 }
     ] 
   },
   bossRailgunFire: { 
     layers: [
-        { type: 'square', freqStart: 2000, freqEnd: 100, gain: 0.2, duration: 0.2 }, 
-        { type: 'noise', filterFreq: 5000, gain: 0.2, duration: 0.4 }
+        { type: 'square', freqStart: 2500, freqEnd: 100, gain: 0.3, duration: 0.3 }, // Crack
+        { type: 'sawtooth', freqStart: 200, freqEnd: 40, gain: 0.3, duration: 0.4 }, // Punch
+        { type: 'noise', filterFreq: 6000, gain: 0.2, duration: 0.25 } // Blast
     ] 
   },
   mineDeploy: { 
@@ -430,16 +443,22 @@ export class AudioController {
       const engine = this.activeEngines.get(id);
       if (engine) {
           const t = this.ctx.currentTime;
-          engine.gain.gain.setTargetAtTime(0, t, 0.2);
-          setTimeout(() => {
-              const currentEngine = this.activeEngines.get(id);
-              if (currentEngine === engine) {
-                  engine.oscs.forEach(o => { try { o.stop(); } catch(e){} });
-                  engine.gain.disconnect();
-                  this.activeEngines.delete(id);
-              }
-          }, 250);
+          // Ramp down volume
+          try {
+             engine.gain.gain.setTargetAtTime(0, t, 0.2);
+          } catch(e) {}
+          
+          // Remove from map immediately to prevent subsequent updates
           this.activeEngines.delete(id);
+
+          // Schedule complete stop and cleanup
+          // Use a closure to capture the specific 'engine' instance to be stopped
+          setTimeout(() => {
+              engine.oscs.forEach(o => { 
+                  try { o.stop(); } catch(e){} 
+              });
+              try { engine.gain.disconnect(); } catch(e){}
+          }, 250);
       }
   }
 
@@ -517,14 +536,11 @@ export class AudioController {
             gain: lowGain,
             stop: (stopTime: number) => {
                 try {
-                    // Properly stop the oscillators
                     oscLow1.stop(stopTime);
                     oscLow2.stop(stopTime);
                     oscHigh.stop(stopTime);
                     amLfo.stop(stopTime);
                     
-                    // Properly ramp down highGain to avoid lingering sound
-                    // We must anchor the value at current time before ramping down
                     const now = this.ctx.currentTime;
                     highGain.gain.cancelScheduledValues(now);
                     highGain.gain.setValueAtTime(highGain.gain.value, now);
@@ -534,13 +550,11 @@ export class AudioController {
         });
 
     } else if (key === 'beamCharge') {
-        // UPGRADED BEAM CHARGE: Richer, scifi build-up
         const osc1 = this.ctx.createOscillator();
-        osc1.type = 'sawtooth'; // More harmonic content
+        osc1.type = 'sawtooth'; 
         osc1.frequency.setValueAtTime(100, t);
         osc1.frequency.exponentialRampToValueAtTime(2000, t + 1.5); 
 
-        // Sub oscillator for weight
         const subOsc = this.ctx.createOscillator();
         subOsc.type = 'square';
         subOsc.frequency.setValueAtTime(50, t);
@@ -551,29 +565,26 @@ export class AudioController {
         gain.gain.linearRampToValueAtTime(0.25, t + 0.5); 
         gain.gain.exponentialRampToValueAtTime(0.4, t + 1.5);
 
-        // Low Pass Filter sweep to "open up" the sound
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.Q.value = 5;
         filter.frequency.setValueAtTime(200, t);
         filter.frequency.exponentialRampToValueAtTime(4000, t + 1.5);
 
-        // Tremolo for instability
         const lfo = this.ctx.createOscillator();
         lfo.type = 'sine';
         lfo.frequency.setValueAtTime(10, t);
         lfo.frequency.linearRampToValueAtTime(30, t + 1.5);
         
         const lfoGain = this.ctx.createGain();
-        lfoGain.gain.value = 0.5; // Amplitude modulation depth
+        lfoGain.gain.value = 0.5; 
         
-        // Routing: Osc -> Filter -> Gain(Modulated) -> Output
         osc1.connect(filter);
         subOsc.connect(filter);
         
         const modGain = this.ctx.createGain();
         modGain.gain.value = 1.0;
-        lfo.connect(lfoGain).connect(modGain.gain); // AM Synthesis
+        lfo.connect(lfoGain).connect(modGain.gain); 
         
         filter.connect(modGain).connect(gain).connect(this.sfxGain);
 
@@ -591,25 +602,19 @@ export class AudioController {
         });
         
     } else if (key === 'beamFire') {
-        // UPGRADED BEAM FIRE: Powerful, screaming laser
-        
-        // 1. Screaming lead
         const leadOsc = this.ctx.createOscillator();
         leadOsc.type = 'sawtooth';
-        leadOsc.frequency.setValueAtTime(800, t); // Stable high pitch
+        leadOsc.frequency.setValueAtTime(800, t);
         
-        // 2. Thick unstable body
         const bodyOsc = this.ctx.createOscillator();
         bodyOsc.type = 'square';
         bodyOsc.frequency.setValueAtTime(200, t);
-        // FM Synthesis for grit
         const fmOsc = this.ctx.createOscillator();
         fmOsc.frequency.value = 110; 
         const fmGain = this.ctx.createGain();
         fmGain.gain.value = 500;
         fmOsc.connect(fmGain).connect(bodyOsc.frequency);
 
-        // 3. Noise Texture
         const noise = this.ctx.createBufferSource();
         if (this.noiseBuffer) noise.buffer = this.noiseBuffer;
         noise.loop = true;
@@ -618,12 +623,10 @@ export class AudioController {
         noiseFilter.frequency.value = 2000;
         noise.connect(noiseFilter);
 
-        // Mixing
         const masterGain = this.ctx.createGain();
         masterGain.gain.setValueAtTime(0, t);
         masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1);
 
-        // Dedicated gains
         const leadGain = this.ctx.createGain(); leadGain.gain.value = 0.15;
         const bodyGain = this.ctx.createGain(); bodyGain.gain.value = 0.2;
         const noiseGain = this.ctx.createGain(); noiseGain.gain.value = 0.1;
@@ -648,71 +651,117 @@ export class AudioController {
                 noise.stop(stopTime);
             }
         });
+    } else if (key === 'bossRailgunCharge') {
+        // IMPROVED: Player Railgun Charge (Held)
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, t);
+        osc.frequency.exponentialRampToValueAtTime(2500, t + 1.5);
+        
+        const sub = this.ctx.createOscillator();
+        sub.type = 'square';
+        sub.frequency.setValueAtTime(50, t);
+        sub.frequency.exponentialRampToValueAtTime(200, t + 1.5);
+        
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 5;
+        filter.frequency.setValueAtTime(300, t);
+        filter.frequency.exponentialRampToValueAtTime(8000, t + 1.5);
+        
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.3, t + 1.5);
+        
+        osc.connect(filter);
+        sub.connect(filter);
+        filter.connect(gain).connect(this.sfxGain);
+        
+        osc.start(t);
+        sub.start(t);
+        
+        this.activeLoops.set(key, {
+            gain,
+            stop: (stopTime: number) => {
+                osc.stop(stopTime);
+                sub.stop(stopTime);
+            }
+        });
     } else if (key === 'bossLaserLoop') {
-        // New Heavy Boss Laser Loop
-        // 1. Deep Sawtooth Rumble
-        const osc1 = this.ctx.createOscillator();
-        osc1.type = 'sawtooth';
-        osc1.frequency.setValueAtTime(45, t);
-        
-        // 2. Tearing Square Wave with LFO width modulation simulation (via frequency vibrato roughly)
-        const osc2 = this.ctx.createOscillator();
-        osc2.type = 'square';
-        osc2.frequency.setValueAtTime(80, t);
-        
-        const lfo = this.ctx.createOscillator();
-        lfo.type = 'sawtooth';
-        lfo.frequency.value = 25; // Fast rattle
-        const lfoGain = this.ctx.createGain();
-        lfoGain.gain.value = 100; // FM depth
-        lfo.connect(lfoGain).connect(osc2.frequency);
-
-        // 3. High Energy Whine
-        const osc3 = this.ctx.createOscillator();
-        osc3.type = 'sine';
-        osc3.frequency.setValueAtTime(3000, t);
-        osc3.frequency.linearRampToValueAtTime(1000, t + 8); // Pitch drop slightly
-
-        // Noise layer for texture
         const noise = this.ctx.createBufferSource();
         if (this.noiseBuffer) noise.buffer = this.noiseBuffer;
         noise.loop = true;
         const noiseFilter = this.ctx.createBiquadFilter();
         noiseFilter.type = 'bandpass';
-        noiseFilter.frequency.value = 800;
-        noise.connect(noiseFilter);
+        noiseFilter.Q.value = 1; 
+        
+        const noiseLFO = this.ctx.createOscillator();
+        noiseLFO.type = 'sine';
+        noiseLFO.frequency.value = 0.2; 
+        const noiseLFOGain = this.ctx.createGain();
+        noiseLFOGain.gain.value = 1000;
+        
+        noiseFilter.frequency.setValueAtTime(800, t);
+        noiseLFO.connect(noiseLFOGain).connect(noiseFilter.frequency);
+
+        const oscBass = this.ctx.createOscillator();
+        oscBass.type = 'sawtooth';
+        oscBass.frequency.setValueAtTime(45, t);
+        const oscSub = this.ctx.createOscillator();
+        oscSub.type = 'sine';
+        oscSub.frequency.setValueAtTime(90, t); 
+        
+        const oscScream = this.ctx.createOscillator();
+        oscScream.type = 'square';
+        oscScream.frequency.setValueAtTime(800, t);
+        const screamLFO = this.ctx.createOscillator();
+        screamLFO.type = 'sawtooth';
+        screamLFO.frequency.value = 25; 
+        const screamLFOGain = this.ctx.createGain();
+        screamLFOGain.gain.value = 50; 
+        screamLFO.connect(screamLFOGain).connect(oscScream.frequency);
 
         const masterGain = this.ctx.createGain();
         masterGain.gain.setValueAtTime(0, t);
-        masterGain.gain.linearRampToValueAtTime(0.4, t + 0.2); 
+        masterGain.gain.linearRampToValueAtTime(0.5, t + 0.5); 
 
-        // Sub-mix
-        const g1 = this.ctx.createGain(); g1.gain.value = 0.5;
-        const g2 = this.ctx.createGain(); g2.gain.value = 0.2;
-        const g3 = this.ctx.createGain(); g3.gain.value = 0.1;
-        const gNoise = this.ctx.createGain(); gNoise.gain.value = 0.15;
+        const gNoise = this.ctx.createGain(); gNoise.gain.value = 0.4;
+        const gBass = this.ctx.createGain(); gBass.gain.value = 0.5;
+        const gScream = this.ctx.createGain(); gScream.gain.value = 0.15;
 
-        osc1.connect(g1).connect(masterGain);
-        osc2.connect(g2).connect(masterGain);
-        osc3.connect(g3).connect(masterGain);
-        noiseFilter.connect(gNoise).connect(masterGain);
-        
-        masterGain.connect(this.sfxGain);
+        const panner = this.ctx.createStereoPanner();
+        const panLFO = this.ctx.createOscillator();
+        panLFO.type = 'sine';
+        panLFO.frequency.value = 0.15; 
+        const panGain = this.ctx.createGain();
+        panGain.gain.value = 0.3;
+        panLFO.connect(panGain).connect(panner.pan);
 
-        osc1.start(t);
-        osc2.start(t);
-        lfo.start(t);
-        osc3.start(t);
+        noise.connect(noiseFilter).connect(gNoise).connect(masterGain);
+        oscBass.connect(gBass).connect(masterGain);
+        oscSub.connect(gBass); 
+        oscScream.connect(gScream).connect(masterGain);
+
+        masterGain.connect(panner).connect(this.sfxGain);
+
         noise.start(t);
+        noiseLFO.start(t);
+        oscBass.start(t);
+        oscSub.start(t);
+        oscScream.start(t);
+        screamLFO.start(t);
+        panLFO.start(t);
 
         this.activeLoops.set(key, {
             gain: masterGain,
             stop: (stopTime: number) => {
-                osc1.stop(stopTime);
-                osc2.stop(stopTime);
-                lfo.stop(stopTime);
-                osc3.stop(stopTime);
                 noise.stop(stopTime);
+                noiseLFO.stop(stopTime);
+                oscBass.stop(stopTime);
+                oscSub.stop(stopTime);
+                oscScream.stop(stopTime);
+                screamLFO.stop(stopTime);
+                panLFO.stop(stopTime);
             }
         });
     }
