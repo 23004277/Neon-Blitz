@@ -11,7 +11,7 @@ import DuelSelectionScreen from './components/DuelSelectionScreen';
 import Chatbot from './components/chatbot/Chatbot';
 import ChatbotToggleButton from './components/chatbot/ChatbotToggleButton';
 import CustomCursor from './components/game/CustomCursor';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 
 import type { Screen, ChatMessage, GameConfig } from './types';
 
@@ -71,10 +71,13 @@ const App: React.FC = () => {
     const userMessage: ChatMessage = { sender: 'user', text: input };
     setChatMessages(prev => [...prev, userMessage]);
     setIsChatbotLoading(true);
+    
+    // Add initial empty bot message for streaming
+    setChatMessages(prev => [...prev, { sender: 'bot', text: '' }]);
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const response = await ai.models.generateContent({
+      const responseStream = await ai.models.generateContentStream({
         model: 'gemini-3-flash-preview',
         contents: input,
         config: {
@@ -83,7 +86,7 @@ Your mission: Ensure the Pilot (user) survives the neon onslaught.
 Your tone: Gritty, cynical, concise, and professional. Use cyberpunk military slang ("chrome", "cycles", "zeroed", "glitch", "meatbag").
 
 **OPERATIONAL INTEL:**
-1.  **Mission:** Survive endless waves. Defeat Bosses (Goliath, Viper, Sentinel) that spawn at score thresholds.
+1.  **Mission:** Survive endless waves in **Campaign Mode** or defeat a single target in **Duel Mode**.
 2.  **Controls:** WASD to drive. Mouse to aim. Space to fire.
 
 **TACTICAL SYSTEMS (HOTBAR):**
@@ -99,17 +102,48 @@ Your tone: Gritty, cynical, concise, and professional. Use cyberpunk military sl
 *   **Tier 2:** Orange tanks. High aggression.
 *   **Bosses:** Telegraph attacks with red zones. **Dodge or die.**
 
+**DUEL TARGETS:**
+*   **Rogue Scout:** Fast, agile, weak armor. Don't let it flank you.
+*   **Iron Bastion:** Heavily armored, dual cannons. Keep moving.
+*   **Goliath Prime:** Massive siege engine. Avoid the railgun.
+
 Keep responses under 3 sentences unless a full briefing is requested. Use **Bold** for emphasis.`,
         }
       });
       
-      const botMessage: ChatMessage = { sender: 'bot', text: response.text || "Transmission interrupted." };
-      setChatMessages(prev => [...prev, botMessage]);
+      for await (const chunk of responseStream) {
+        const c = chunk as GenerateContentResponse;
+        const text = c.text;
+        if (text) {
+          setChatMessages(prev => {
+            const newMessages = [...prev];
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg.sender === 'bot') {
+              lastMsg.text += text;
+            }
+            return newMessages;
+          });
+        }
+      }
 
     } catch (error) {
       console.error("Gemini API Error:", error);
-      const errorMessage: ChatMessage = { sender: 'bot', text: "Connection severed. Neural link unstable. Try again." };
-      setChatMessages(prev => [...prev, errorMessage]);
+      setChatMessages(prev => {
+        const newMessages = [...prev];
+        const lastMsg = newMessages[newMessages.length - 1];
+        // If the last message was the empty bot message, update it to error
+        if (lastMsg.sender === 'bot' && lastMsg.text === '') {
+           lastMsg.text = "Connection severed. Neural link unstable. Try again.";
+        } else {
+           // Otherwise push a new error message (though usually we are in the middle of streaming)
+           // Actually, if it fails mid-stream, we might want to append error or replace.
+           // For simplicity, we just append or set if empty.
+           if (lastMsg.sender === 'bot') {
+             lastMsg.text += "\n[CONNECTION LOST]";
+           }
+        }
+        return newMessages;
+      });
     } finally {
       setIsChatbotLoading(false);
     }

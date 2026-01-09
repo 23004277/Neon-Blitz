@@ -580,6 +580,39 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
                 ctx.fillRect(6, -7, 20, 2); // Stripe
                 ctx.fillRect(6, 5, 20, 2);  // Stripe
             }
+        } else if (tank.activePowerUp === 'homingMissiles') {
+            // Draw standard turret
+            ctx.fillStyle = cFill('#334155');
+            ctx.fillRect(-2, -3, 32, 6);
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(4, -1, 20, 2);
+            }
+            
+            // Draw Missile Pods
+            ctx.save();
+            // Left Pod
+            ctx.fillStyle = cFill('#1e293b'); // Dark grey
+            ctx.fillRect(-6, -16, 12, 6);
+            // Missiles in left pod
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444'; // Red
+            const count = tank.homingMissileCount || 0;
+            const leftCount = Math.ceil(count / 2);
+            const rightCount = Math.floor(count / 2);
+            
+            for(let i=0; i<Math.min(3, leftCount); i++) {
+                ctx.beginPath(); ctx.arc(-4 + i*4, -13, 2, 0, Math.PI*2); ctx.fill();
+            }
+
+            // Right Pod
+            ctx.fillStyle = cFill('#1e293b');
+            ctx.fillRect(-6, 10, 12, 6);
+            // Missiles in right pod
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            for(let i=0; i<Math.min(3, rightCount); i++) {
+                ctx.beginPath(); ctx.arc(-4 + i*4, 13, 2, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.restore();
         } else {
             // Original Single Barrel
             ctx.fillStyle = cFill('#334155');

@@ -67,6 +67,7 @@ export interface Projectile {
   position: Vector;
   angle: number;
   velocity: Vector; // Added explicit velocity for better physics
+  createdAt: number; // Added to track lifespan
   size: { width: number; height: number };
   isBarrage?: boolean;
   isHoming?: boolean;

@@ -33,6 +33,15 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   shot_4: { layers: [{ type: 'square', freqStart: 2000, freqEnd: 300, gain: 0.07, duration: 0.08 }, { type: 'triangle', freqStart: 300, freqEnd: 50, gain: 0.1, duration: 0.1 }] },
   shot_5: { layers: [{ type: 'triangle', freqStart: 600, freqEnd: 50, gain: 0.12, duration: 0.2 }, { type: 'noise', filterFreq: 1500, gain: 0.08, duration: 0.15 }] },
   
+  // NEW: Dual Cannon (Heavy, mechanical, punchy)
+  dualCannon: { 
+    layers: [
+        { type: 'square', freqStart: 180, freqEnd: 40, gain: 0.18, duration: 0.18 }, // Low punch
+        { type: 'sawtooth', freqStart: 800, freqEnd: 100, gain: 0.12, duration: 0.12 }, // Mechanical click
+        { type: 'noise', filterFreq: 800, gain: 0.15, duration: 0.15 } // Air blast
+    ] 
+  },
+
   // Rocket Barrage SFX
   rocketLaunch: { 
     layers: [
@@ -53,6 +62,12 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   impact_player: { layers: [{ type: 'square', freqStart: 100, freqEnd: 20, gain: 0.25, duration: 0.2 }, { type: 'noise', filterFreq: 600, gain: 0.2, duration: 0.15 }] }, 
   hit: { layers: [{ type: 'triangle', freqStart: 200, freqEnd: 80, gain: 0.06, duration: 0.08 }] }, 
   shieldHit: { layers: [{ type: 'square', freqStart: 2000, freqEnd: 1500, gain: 0.05, duration: 0.1 }] }, 
+  shieldBreak: { 
+    layers: [
+        { type: 'sawtooth', freqStart: 1000, freqEnd: 100, gain: 0.15, duration: 0.4 },
+        { type: 'noise', filterFreq: 3000, gain: 0.1, duration: 0.3 }
+    ] 
+  },
   
   // Abilities
   overdrive: { 
@@ -512,110 +527,118 @@ export class AudioController {
         });
 
     } else if (key === 'beamCharge') {
+        // UPGRADED BEAM CHARGE: Richer, scifi build-up
         const osc1 = this.ctx.createOscillator();
-        osc1.type = 'triangle';
-        osc1.frequency.setValueAtTime(150, t);
-        osc1.frequency.exponentialRampToValueAtTime(1500, t + 1.5); 
+        osc1.type = 'sawtooth'; // More harmonic content
+        osc1.frequency.setValueAtTime(100, t);
+        osc1.frequency.exponentialRampToValueAtTime(2000, t + 1.5); 
 
-        const osc2 = this.ctx.createOscillator();
-        osc2.type = 'square';
-        osc2.frequency.setValueAtTime(80, t);
-        osc2.frequency.exponentialRampToValueAtTime(600, t + 1.5);
+        // Sub oscillator for weight
+        const subOsc = this.ctx.createOscillator();
+        subOsc.type = 'square';
+        subOsc.frequency.setValueAtTime(50, t);
+        subOsc.frequency.exponentialRampToValueAtTime(400, t + 1.5);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.18, t + 0.3); 
-        gain.gain.exponentialRampToValueAtTime(0.25, t + 1.5);
+        gain.gain.linearRampToValueAtTime(0.25, t + 0.5); 
+        gain.gain.exponentialRampToValueAtTime(0.4, t + 1.5);
 
+        // Low Pass Filter sweep to "open up" the sound
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 5;
+        filter.frequency.setValueAtTime(200, t);
+        filter.frequency.exponentialRampToValueAtTime(4000, t + 1.5);
+
+        // Tremolo for instability
         const lfo = this.ctx.createOscillator();
-        lfo.type = 'sawtooth';
-        lfo.frequency.setValueAtTime(15, t);
-        lfo.frequency.linearRampToValueAtTime(40, t + 1.5);
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(10, t);
+        lfo.frequency.linearRampToValueAtTime(30, t + 1.5);
         
         const lfoGain = this.ctx.createGain();
-        lfoGain.gain.value = 50; 
+        lfoGain.gain.value = 0.5; // Amplitude modulation depth
         
-        lfo.connect(lfoGain).connect(osc1.frequency);
-
-        osc1.connect(gain);
-        osc2.connect(gain);
-        gain.connect(this.sfxGain);
+        // Routing: Osc -> Filter -> Gain(Modulated) -> Output
+        osc1.connect(filter);
+        subOsc.connect(filter);
+        
+        const modGain = this.ctx.createGain();
+        modGain.gain.value = 1.0;
+        lfo.connect(lfoGain).connect(modGain.gain); // AM Synthesis
+        
+        filter.connect(modGain).connect(gain).connect(this.sfxGain);
 
         osc1.start(t);
-        osc2.start(t);
+        subOsc.start(t);
         lfo.start(t);
 
         this.activeLoops.set(key, {
             gain,
             stop: (stopTime: number) => {
                 osc1.stop(stopTime);
-                osc2.stop(stopTime);
+                subOsc.stop(stopTime);
                 lfo.stop(stopTime);
             }
         });
         
     } else if (key === 'beamFire') {
-        const subOsc = this.ctx.createOscillator();
-        subOsc.type = 'sawtooth';
-        subOsc.frequency.setValueAtTime(45, t);
-        const subGain = this.ctx.createGain();
-        subGain.gain.value = 0.15;
-        const subFilter = this.ctx.createBiquadFilter();
-        subFilter.type = 'lowpass';
-        subFilter.frequency.value = 150;
-        subOsc.connect(subFilter).connect(subGain);
+        // UPGRADED BEAM FIRE: Powerful, screaming laser
+        
+        // 1. Screaming lead
+        const leadOsc = this.ctx.createOscillator();
+        leadOsc.type = 'sawtooth';
+        leadOsc.frequency.setValueAtTime(800, t); // Stable high pitch
+        
+        // 2. Thick unstable body
+        const bodyOsc = this.ctx.createOscillator();
+        bodyOsc.type = 'square';
+        bodyOsc.frequency.setValueAtTime(200, t);
+        // FM Synthesis for grit
+        const fmOsc = this.ctx.createOscillator();
+        fmOsc.frequency.value = 110; 
+        const fmGain = this.ctx.createGain();
+        fmGain.gain.value = 500;
+        fmOsc.connect(fmGain).connect(bodyOsc.frequency);
 
+        // 3. Noise Texture
         const noise = this.ctx.createBufferSource();
         if (this.noiseBuffer) noise.buffer = this.noiseBuffer;
         noise.loop = true;
         const noiseFilter = this.ctx.createBiquadFilter();
-        noiseFilter.type = 'bandpass';
+        noiseFilter.type = 'highpass';
         noiseFilter.frequency.value = 2000;
-        noiseFilter.Q.value = 1;
-        const noiseLfo = this.ctx.createOscillator();
-        noiseLfo.frequency.value = 12; 
-        const noiseLfoGain = this.ctx.createGain();
-        noiseLfoGain.gain.value = 500;
-        noiseLfo.connect(noiseLfoGain).connect(noiseFilter.frequency);
-        const noiseGain = this.ctx.createGain();
-        noiseGain.gain.value = 0.08;
-        noise.connect(noiseFilter).connect(noiseGain);
+        noise.connect(noiseFilter);
 
-        const midOsc = this.ctx.createOscillator();
-        midOsc.type = 'square';
-        midOsc.frequency.setValueAtTime(300, t);
-        const fmOsc = this.ctx.createOscillator();
-        fmOsc.frequency.value = 55; 
-        const fmGain = this.ctx.createGain();
-        fmGain.gain.value = 100;
-        fmOsc.connect(fmGain).connect(midOsc.frequency);
-        const midGain = this.ctx.createGain();
-        midGain.gain.value = 0.06;
-        midOsc.connect(midGain);
+        // Mixing
+        const masterGain = this.ctx.createGain();
+        masterGain.gain.setValueAtTime(0, t);
+        masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1);
 
-        const masterBeamGain = this.ctx.createGain();
-        masterBeamGain.gain.setValueAtTime(0, t);
-        masterBeamGain.gain.linearRampToValueAtTime(1, t + 0.1);
+        // Dedicated gains
+        const leadGain = this.ctx.createGain(); leadGain.gain.value = 0.15;
+        const bodyGain = this.ctx.createGain(); bodyGain.gain.value = 0.2;
+        const noiseGain = this.ctx.createGain(); noiseGain.gain.value = 0.1;
 
-        subGain.connect(masterBeamGain);
-        noiseGain.connect(masterBeamGain);
-        midGain.connect(masterBeamGain);
-        masterBeamGain.connect(this.sfxGain);
+        leadOsc.connect(leadGain).connect(masterGain);
+        bodyOsc.connect(bodyGain).connect(masterGain);
+        noiseFilter.connect(noiseGain).connect(masterGain);
         
-        subOsc.start(t);
-        noise.start(t);
-        noiseLfo.start(t);
-        midOsc.start(t);
+        masterGain.connect(this.sfxGain);
+        
+        leadOsc.start(t);
+        bodyOsc.start(t);
         fmOsc.start(t);
+        noise.start(t);
         
         this.activeLoops.set(key, {
-            gain: masterBeamGain,
+            gain: masterGain,
             stop: (stopTime: number) => {
-                subOsc.stop(stopTime);
-                noise.stop(stopTime);
-                noiseLfo.stop(stopTime);
-                midOsc.stop(stopTime);
+                leadOsc.stop(stopTime);
+                bodyOsc.stop(stopTime);
                 fmOsc.stop(stopTime);
+                noise.stop(stopTime);
             }
         });
     }

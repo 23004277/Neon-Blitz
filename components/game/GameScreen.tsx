@@ -1251,7 +1251,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             isHoming: true,
             turnRate: turnRate,
             targetId: targetId,
-            color: color
+            color: color,
+            createdAt: Date.now()
         });
         
         audio.play('rocketLaunch', source.position.x);
@@ -1284,6 +1285,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  // Prompt implies "output increased by this energy", let's consume a bit on fire for 'momentary' feel
                  game.current.player.damageConverterCharge = Math.max(0, charge - 2); 
              }
+             
+             // DUAL CANNON BONUS (Visual/Audio only, logic handled by double call)
+             if (game.current.player.activePowerUp === 'dualCannon') {
+                 color = '#f97316'; // Orange/Gold for heavy cannon look
+                 damage += 1; // Slight bonus
+             }
         } else if (ownerId === 'boss') {
              damage = 2;
              speed *= 1.15;
@@ -1301,12 +1308,17 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             velocity: { x: Math.cos(rad)*speed, y: Math.sin(rad)*speed },
             size: { width: 8, height: 8 },
             damage: damage,
-            color: color
+            color: color,
+            createdAt: Date.now()
         });
         
         if (ownerId === 'player') {
-            const variant = Math.floor(Math.random() * 5) + 1;
-            audio.play(`shot_${variant}`, position.x);
+            if (game.current.player.activePowerUp === 'dualCannon') {
+                audio.play('dualCannon', position.x);
+            } else {
+                const variant = Math.floor(Math.random() * 5) + 1;
+                audio.play(`shot_${variant}`, position.x);
+            }
         } else {
             audio.play('shot_5', position.x);
         }
