@@ -50,6 +50,35 @@ export function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: n
     ctx.restore();
 }
 
+export function drawLaserSweep(ctx: CanvasRenderingContext2D, position: Vector, angle: number, color: string = '#ff0000') {
+    ctx.save();
+    ctx.translate(position.x, position.y);
+    ctx.rotate(degToRad(angle));
+
+    const flicker = Math.random() * 5;
+    
+    // Core Beam
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 10 + flicker;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 30;
+    ctx.beginPath();
+    ctx.moveTo(60, 0); // Offset from center (turret length)
+    ctx.lineTo(1000, 0);
+    ctx.stroke();
+    
+    // Outer Glow
+    ctx.strokeStyle = `rgba(255, 0, 0, 0.5)`; // Consistent red glow
+    ctx.lineWidth = 30 + flicker * 2;
+    ctx.beginPath();
+    ctx.moveTo(60, 0);
+    ctx.lineTo(1000, 0);
+    ctx.stroke();
+    
+    ctx.restore();
+}
+
 export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number, isTimeStopped: boolean) {
     if (boss.status !== 'active' && boss.status !== 'spawning') return;
     ctx.save();
@@ -236,29 +265,18 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
        }
     }
     
-    if (boss.attackState.currentAttack === 'laserSweep' && boss.attackState.phase === 'attacking') {
-        ctx.save();
-        const flicker = Math.random() * 5;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 10 + flicker;
-        ctx.lineCap = 'round';
-        ctx.shadowColor = '#ff0000';
-        ctx.shadowBlur = 30;
-        ctx.beginPath();
-        ctx.moveTo(60, 0);
-        ctx.lineTo(1000, 0);
-        ctx.stroke();
-        
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-        ctx.lineWidth = 30 + flicker * 2;
-        ctx.beginPath();
-        ctx.moveTo(60, 0);
-        ctx.lineTo(1000, 0);
-        ctx.stroke();
-        ctx.restore();
-    }
+    ctx.restore(); // End boss transform
 
-    ctx.restore();
+    // Draw active Laser Sweep (separate from boss rotation to allow absolute beam calculation if needed, but drawing relative is easier)
+    // Actually, drawLaserSweep expects absolute position and angle.
+    // The previous implementation of laser sweep in drawBoss was inside the transforms.
+    // We can call our new shared function here, but we need to undo the context restore or pass correct global coordinates.
+    // Simplest is to keep using the relative drawing inside the boss loop for the BOSS (AI), 
+    // OR just use drawLaserSweep outside the boss matrix.
+    
+    if (boss.attackState.currentAttack === 'laserSweep' && boss.attackState.phase === 'attacking') {
+         drawLaserSweep(ctx, boss.position, boss.turretAngle, '#ff0000');
+    }
 }
 
 export function drawLastStandWarning(ctx: CanvasRenderingContext2D, boss: Boss, now: number) {
@@ -340,6 +358,65 @@ export function drawLastStandWarning(ctx: CanvasRenderingContext2D, boss: Boss, 
 
 export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number, abilities: Ability[], isTimeStopped: boolean) {
     if (tank.status === 'dead') return;
+    
+    // Check if player is mimicking a boss for Sandbox mode
+    const isPlayer = tank.type === 'player';
+    
+    // If Player is in Goliath Mode, we need to draw using Boss Geometry but with Player status/color logic
+    if (isPlayer && tank.bossType === 'goliath') {
+        // Construct a temporary boss object to reuse drawBoss logic (or replicate geometry here)
+        // Replicating simplified geometry to avoid type casting chaos and keep color control
+        ctx.save();
+        ctx.translate(tank.position.x, tank.position.y);
+        ctx.rotate(degToRad(tank.angle));
+        
+        const scale = tank.size.width / 80; 
+        ctx.scale(scale, scale);
+        
+        const isHit = tank.lastHitTime && now - tank.lastHitTime < 75;
+        const baseColor = isHit ? '#fff' : tank.color;
+        
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = isHit ? 20 : 15;
+
+        // Goliath Chassis
+        ctx.fillStyle = isHit ? '#fff' : '#1c1917';
+        ctx.fillRect(-45, -50, 30, 100); 
+        
+        ctx.fillStyle = isHit ? '#fff' : '#450a0a'; 
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const s = 40;
+        ctx.moveTo(s, 0); ctx.lineTo(s*0.7, s*0.7); ctx.lineTo(0, s);
+        ctx.lineTo(-s*0.7, s*0.7); ctx.lineTo(-s, 0); ctx.lineTo(-s*0.7, -s*0.7);
+        ctx.lineTo(0, -s); ctx.lineTo(s*0.7, -s*0.7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Turret Rotation
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        
+        ctx.fillStyle = isHit ? '#fff' : '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        // Double Barrel
+        ctx.fillRect(10, -18, 55, 12);
+        ctx.fillRect(10, 6, 55, 12);
+        
+        ctx.fillStyle = isHit ? '#fff' : '#7f1d1d';
+        ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+        // Red Eye
+        ctx.fillStyle = isHit ? '#fff' : '#fca5a5';
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+
+        ctx.restore();
+        return; // Skip standard tank drawing
+    }
+
     ctx.save();
     ctx.translate(tank.position.x, tank.position.y);
 
@@ -349,7 +426,6 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.globalAlpha = p;
     }
 
-    const isPlayer = tank.type === 'player';
     const isHit = tank.lastHitTime && now - tank.lastHitTime < 75;
     
     const cFill = (col: string) => isHit ? '#ffffff' : col;
@@ -375,12 +451,6 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.beginPath();
             ctx.arc(0, 0, 25, 0, Math.PI*2);
             ctx.fill();
-            // Floating crosses
-            if (now % 600 < 30) {
-                 ctx.fillStyle = '#4ade80';
-                 ctx.fillRect(15, -15, 6, 2);
-                 ctx.fillRect(17, -17, 2, 6);
-            }
         }
         ctx.restore();
     }
@@ -432,7 +502,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
     ctx.rotate(degToRad(tank.angle));
 
     if (isPlayer) {
-        const primary = '#00F0FF';
+        const primary = tank.color || '#00F0FF';
         const dark = '#020617';
 
         ctx.shadowColor = isHit ? '#ffffff' : primary;

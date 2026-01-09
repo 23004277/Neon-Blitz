@@ -113,7 +113,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ navigateTo }) => {
   const menuItems = [
     { id: 1, label: 'DEPLOY', sub: 'CAMPAIGN', target: 'difficulty-selection', color: 'cyan', desc: 'ENGAGE HOSTILES IN SECTOR 7' },
     { id: 2, label: 'SKIRMISH', sub: 'DUEL MODE', target: 'duel-selection', color: 'magenta', desc: '1V1 TACTICAL SIMULATION' },
-    { id: 3, label: 'CONFIG', sub: 'SYSTEMS', target: 'settings', color: 'yellow', desc: 'AUDIO / VIDEO / CONTROLS' },
+    { id: 3, label: 'SANDBOX', sub: 'FREE PLAY', target: 'sandbox-selection', color: 'yellow', desc: 'TEST PROTOTYPE CHASSIS' },
+    { id: 4, label: 'CONFIG', sub: 'SYSTEMS', target: 'settings', color: 'cyan', desc: 'AUDIO / VIDEO / CONTROLS' },
   ];
 
   return (

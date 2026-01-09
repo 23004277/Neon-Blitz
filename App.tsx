@@ -8,6 +8,7 @@ import SettingsMenu from './components/SettingsMenu';
 import GameScreen from './components/game/GameScreen';
 import DifficultySelectionScreen from './components/DifficultySelectionScreen';
 import DuelSelectionScreen from './components/DuelSelectionScreen';
+import SandboxSelectionScreen from './components/SandboxSelectionScreen';
 import Chatbot from './components/chatbot/Chatbot';
 import ChatbotToggleButton from './components/chatbot/ChatbotToggleButton';
 import CustomCursor from './components/game/CustomCursor';
@@ -97,15 +98,13 @@ Your tone: Gritty, cynical, concise, and professional. Use cyberpunk military sl
 *   **[Y] TESLA STORM:** Emits high-voltage arcs that automatically zap nearby enemies.
     *   **COMBAT TIP:** Activate **Overdrive** while **Tesla Storm** is active to double the zap frequency.
 
+**SANDBOX MODE:**
+*   **GOLIATH PRIME:** Select this chassis to access full boss weaponry (Railgun, Shockwave, Mortar, Laser Sweep).
+
 **THREAT ASSESSMENT:**
 *   **Basic Units:** Red tanks. Low threat.
 *   **Tier 2:** Orange tanks. High aggression.
 *   **Bosses:** Telegraph attacks with red zones. **Dodge or die.**
-
-**DUEL TARGETS:**
-*   **Rogue Scout:** Fast, agile, weak armor. Don't let it flank you.
-*   **Iron Bastion:** Heavily armored, dual cannons. Keep moving.
-*   **Goliath Prime:** Massive siege engine. Avoid the railgun.
 
 Keep responses under 3 sentences unless a full briefing is requested. Use **Bold** for emphasis.`,
         }
@@ -168,6 +167,13 @@ Keep responses under 3 sentences unless a full briefing is requested. Use **Bold
       case 'duel-selection':
         return (
           <DuelSelectionScreen 
+            navigateTo={navigateTo} 
+            setGameConfig={setGameConfig} 
+          />
+        );
+      case 'sandbox-selection':
+        return (
+          <SandboxSelectionScreen 
             navigateTo={navigateTo} 
             setGameConfig={setGameConfig} 
           />

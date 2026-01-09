@@ -1,7 +1,7 @@
 
 // FIX: Removed self-import which was causing declaration conflicts.
 // FIX: Replaced incorrect component code with all necessary type definitions for the application.
-export type Screen = 'loading' | 'main-menu' | 'settings' | 'difficulty-selection' | 'game' | 'duel-selection';
+export type Screen = 'loading' | 'main-menu' | 'settings' | 'difficulty-selection' | 'game' | 'duel-selection' | 'sandbox-selection';
 
 export enum Difficulty {
   Easy = 'Easy',
@@ -18,7 +18,7 @@ export enum Language {
   English = 'English',
 }
 
-export type GameMode = 'campaign' | 'duel';
+export type GameMode = 'campaign' | 'duel' | 'sandbox';
 
 export interface DuelConfig {
   opponentId: string;
@@ -28,9 +28,14 @@ export interface DuelConfig {
   opponentName: string;
 }
 
+export interface SandboxConfig {
+  characterId: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime';
+}
+
 export interface GameConfig {
   mode: GameMode;
   duelConfig?: DuelConfig;
+  sandboxConfig?: SandboxConfig;
 }
 
 export interface Settings {
@@ -104,7 +109,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'railgun' | 'mortarVolley' | 'laserSweep';
 
 export interface Ability {
   id: AbilityId;
@@ -147,6 +152,7 @@ export interface Tank {
   type: 'player' | 'enemy';
   status: 'spawning' | 'active' | 'dying' | 'dead';
   tier?: 'basic' | 'intermediate';
+  bossType?: 'goliath' | 'viper' | 'sentinel'; // Added to Tank for Sandbox mode players
   spawnTime?: number;
   position: Vector;
   velocity: Vector;

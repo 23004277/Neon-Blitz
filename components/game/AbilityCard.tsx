@@ -29,6 +29,11 @@ const THEMES: Record<string, { main: string; glow: string; bg: string }> = {
   missileBarrage: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, // Red
   damageConverter: { main: "#8b5cf6", glow: "rgba(139,92,246,0.8)", bg: "rgba(139,92,246,0.15)" }, // Violet
   teslaStorm: { main: "#06b6d4", glow: "rgba(6,182,212,0.8)", bg: "rgba(6,182,212,0.15)" }, // Cyan
+  // Boss Moves (Red Themed)
+  shockwave: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
+  railgun: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
+  mortarVolley: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
+  laserSweep: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
   default: { main: "#00F0FF", glow: "rgba(0,240,255,0.8)", bg: "rgba(0,240,255,0.15)" },
 };
 
@@ -42,10 +47,15 @@ const Icon = memo(({ name }: { name: string }) => {
     "Missile Barrage": <path d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />,
     "Flux Matrix": <path d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />,
     "Tesla Storm": <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />,
+    // Boss Icons
+    "Shockwave": <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-1-8h2v-2h-2v2zm0 4h2v-2h-2v2z" />, // Simple circle alert icon
+    "Railgun": <path d="M21 12L3 12M21 12L15 6M21 12L15 18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+    "Mortar Volley": <path d="M12 3v18m-9-9h18" strokeWidth="2" strokeLinecap="round" />, // Target reticle
+    "Laser Sweep": <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />, // Circle
     default: <circle cx="12" cy="12" r="8" />,
   };
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5" stroke="currentColor" strokeWidth={0}>
       {icons[name] ?? icons.default}
     </svg>
   );
@@ -79,7 +89,7 @@ const AbilityCard = forwardRef<HTMLDivElement, Props>(({ ability, index = 0, cha
       let labelColor = theme.main;
 
       if (state === "active" && isValidStart) {
-        const dur = (ability.name === "Missile Barrage" || ability.name === "Tesla Storm") ? (ability.duration || 3000) : currentDuration;
+        const dur = (ability.name === "Missile Barrage" || ability.name === "Tesla Storm" || ability.name === "Laser Sweep") ? (ability.duration || 3000) : currentDuration;
         const elapsed = now - startTime;
         progress = clamp(1 - elapsed / dur);
         timeLeftMs = Math.max(0, dur - elapsed);
