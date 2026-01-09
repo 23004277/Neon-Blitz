@@ -226,13 +226,15 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  game.current.player.bossType = 'goliath';
                  game.current.player.color = '#ef4444';
                  
-                 // REPLACE ABILITIES WITH BOSS MOVESET
-                 // Exact replicas of boss AI timing and behavior
+                 // REPLACE ABILITIES WITH EXPANDED BOSS MOVESET
+                 // Added Scatter Mines (T) and Nano Swarm (Y)
                  game.current.abilities = [
                      { id: 'shockwave', name: 'Shockwave', keyBinding: 'Q', state: 'ready', duration: 500, cooldown: 5000, startTime: 0 },
                      { id: 'railgun', name: 'Railgun', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 8000, startTime: 0, chargeDuration: 1500 }, // Matches telegraph duration
                      { id: 'mortarVolley', name: 'Mortar Volley', keyBinding: 'R', state: 'ready', duration: 1000, cooldown: 10000, startTime: 0 },
-                     { id: 'laserSweep', name: 'Laser Sweep', keyBinding: 'F', state: 'ready', duration: 8500, cooldown: 15000, startTime: 0 } // Matched to boss nerf duration
+                     { id: 'laserSweep', name: 'Laser Sweep', keyBinding: 'F', state: 'ready', duration: 8500, cooldown: 15000, startTime: 0 }, // Matched to boss nerf duration
+                     { id: 'scatterMines', name: 'Scatter Mines', keyBinding: 'T', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
+                     { id: 'nanoSwarm', name: 'Nano Swarm', keyBinding: 'Y', state: 'ready', duration: 1500, cooldown: 14000, startTime: 0 }
                  ];
              }
              // Vector-01 uses defaults
@@ -363,14 +365,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             audio.setMusicState('ambient');
         }
 
-        // Damage Converter Charge Decay
+        // Damage Converter Charge Decay (Updated for Throttled UI)
         if (player.damageConverterCharge && player.damageConverterCharge > 0) {
             // Decay approx 5 charge per second
             player.damageConverterCharge = Math.max(0, player.damageConverterCharge - (dt / 1000) * 5);
         }
         
-        // Sync Charge to UI (Throttle slightly if needed, but doing simple check for now)
-        if (Math.abs((player.damageConverterCharge || 0) - uiState.damageConverterCharge) > 1) {
+        // --- UI THROTTLING OPTIMIZATION ---
+        // Only update UI if integer value changes to prevent 60fps re-renders
+        const currentChargeInt = Math.floor(player.damageConverterCharge || 0);
+        const prevChargeInt = Math.floor(uiState.damageConverterCharge || 0);
+        
+        if (currentChargeInt !== prevChargeInt) {
              setUiState(prev => ({...prev, damageConverterCharge: player.damageConverterCharge || 0}));
         }
 
@@ -410,6 +416,60 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 return false; 
             }
             return true;
+        });
+        
+        // --- PLAYER MINE DETECTION ---
+        // Iterate through active telegraphs to check if any are player-owned mines
+        // If an enemy is close, detonate it.
+        g.telegraphs = g.telegraphs.filter(t => {
+            if (t.id.startsWith('mine-player-')) {
+                // Check proximity to active enemies
+                const targets = [...g.enemies, g.boss].filter(tgt => tgt && tgt.status === 'active');
+                
+                let detonated = false;
+                for (const target of targets) {
+                    if (!target) continue;
+                    const dist = Math.hypot(target.position.x - t.position.x, target.position.y - t.position.y);
+                    if (dist < 60) { // Trigger radius
+                        detonated = true;
+                        
+                        // Detonation Logic
+                        audio.play('rocketExplosion', t.position.x);
+                        g.animations.push({ id: `mine-exp-${now}-${t.id}`, type: 'explosion', position: t.position, createdAt: now, duration: 600, color: '#f97316' });
+                        g.screenShake += 5;
+
+                        // Damage in AOE
+                        targets.forEach(aoeTarget => {
+                             if (!aoeTarget) return;
+                             const aoeDist = Math.hypot(aoeTarget.position.x - t.position.x, aoeTarget.position.y - t.position.y);
+                             if (aoeDist < 100) { // Blast radius
+                                 const dmg = 8;
+                                 aoeTarget.health -= dmg;
+                                 aoeTarget.lastHitTime = now;
+                                 g.damageNumbers.push({id: `mine-dmg-${now}-${aoeTarget.id}`, text: dmg.toString(), position: aoeTarget.position, createdAt: now, duration: 800, color: '#f97316'});
+                                 
+                                 if (aoeTarget.health <= 0) {
+                                     aoeTarget.status = 'dead';
+                                     if ('type' in aoeTarget && aoeTarget.type === 'enemy') handleEnemyDeath(aoeTarget);
+                                     else if ('bossType' in aoeTarget) {
+                                          g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: aoeTarget.position, createdAt: now, duration: 1000, color: 'red' });
+                                          audio.play('bossExplosion');
+                                          audio.stopEngine('boss');
+                                          setTimeout(() => { game.current.boss = null; }, 1000);
+                                     }
+                                 }
+                             }
+                        });
+                        break; // Stop checking targets for this mine
+                    }
+                }
+                
+                // Also check timer expiration to auto-detonate or just fade? 
+                // Let's say if duration ends, it just fades out without damage to punish missed placement, or explodes? 
+                // Standard game logic: expires = gone. Trigger = boom.
+                if (detonated) return false; // Remove mine
+            }
+            return true; // Keep mine
         });
 
         // 1. Player Movement
@@ -541,10 +601,16 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
         checkCollisions(now);
         
-        // Cleanup expired objects
+        // Cleanup expired objects (MEMORY LEAK FIXES)
         g.damageNumbers = g.damageNumbers.filter(d => now < d.createdAt + d.duration);
-        // Important: Clean up old telegraphs to ensure visual sync, though Boss logic also handles explicit removal
         g.telegraphs = g.telegraphs.filter(t => now < t.createdAt + t.duration);
+        // Important: Clean up animations
+        g.animations = g.animations.filter(a => now < a.createdAt + a.duration);
+        
+        // Cap max entities to prevent infinite lag spirals
+        if (g.projectiles.length > 200) g.projectiles = g.projectiles.slice(-200);
+        if (g.animations.length > 100) g.animations = g.animations.slice(-100);
+        if (g.damageNumbers.length > 50) g.damageNumbers = g.damageNumbers.slice(-50);
 
         // Sync vital stats for HUD
         if (g.enemies.length !== uiState.enemiesRemaining) {
@@ -605,7 +671,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                      stateChanged = true;
                 }
             }
-
+            // NANO SWARM (Key Y)
+            else if (a.id === 'nanoSwarm' && a.state === 'active') {
+                // Launch logic handled in triggerAbility immediately, just manage duration/cooldown here
+                if (now > a.startTime + (a.duration || 500)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            // SCATTER MINES (Key T)
+            else if (a.id === 'scatterMines' && a.state === 'active') {
+                // Mine deployment handled in triggerAbility immediately
+                if (now > a.startTime + (a.duration || 500)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
             // --- STANDARD ABILITIES ---
             // MISSILE BARRAGE
             else if (a.id === 'missileBarrage' && a.state === 'active') {
@@ -1187,6 +1270,22 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         color: p.color || '#ffffff'
                     });
 
+                    // --- VAMPIRIC EFFECT (Nano Swarm) ---
+                    if (p.isVampiric && g.player.health < g.player.maxHealth) {
+                         const healAmount = 1;
+                         g.player.health = Math.min(g.player.maxHealth, g.player.health + healAmount);
+                         setUiState(prev => ({...prev, playerHealth: g.player.health}));
+                         // Visual feed back for heal
+                         g.animations.push({
+                            id: `heal-${now}-${Math.random()}`,
+                            type: 'dashTrail', // Small particle
+                            position: g.player.position,
+                            createdAt: now,
+                            duration: 300,
+                            color: '#22c55e'
+                         });
+                    }
+
                     if (target.health <= 0) {
                         target.status = 'dead';
                         if ('type' in target && target.type === 'enemy') {
@@ -1588,7 +1687,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             }
             if (e.key.toLowerCase() === 'r') triggerAbility(game.current.abilities[2]?.id || 'damageConverter');
             if (e.key.toLowerCase() === 'f') triggerAbility(game.current.abilities[3]?.id || 'missileBarrage');
-            if (e.key.toLowerCase() === 'y') triggerAbility('teslaStorm');
+            // Goliath Prime Keys
+            if (e.key.toLowerCase() === 't') triggerAbility('scatterMines');
+            if (e.key.toLowerCase() === 'y') triggerAbility(game.current.player.bossType === 'goliath' ? 'nanoSwarm' : 'teslaStorm');
             
             if ((e.key === ' ' || e.code === 'Space') && !e.repeat) fireProjectile(game.current.player, game.current.player.turretAngle);
         };
@@ -1717,6 +1818,56 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
             } else if (id === 'laserSweep') {
                 audio.start('bossLaserLoop');
+            } else if (id === 'scatterMines') {
+                audio.play('mineDeploy');
+                // Spawn 8 Mines in a circle around cursor
+                const count = 8;
+                for(let i=0; i<count; i++) {
+                    const angle = (Math.PI * 2 / count) * i;
+                    const radius = 80;
+                    const minePos = { 
+                        x: game.current.mouse.x + Math.cos(angle) * radius, 
+                        y: game.current.mouse.y + Math.sin(angle) * radius 
+                    };
+                    
+                    // Keep within bounds
+                    minePos.x = Math.max(20, Math.min(ARENA_WIDTH-20, minePos.x));
+                    minePos.y = Math.max(20, Math.min(ARENA_HEIGHT-20, minePos.y));
+
+                    game.current.telegraphs.push({ 
+                        id: `mine-player-${Date.now()}-${i}`, 
+                        type: 'circle', 
+                        position: minePos, 
+                        radius: 30, // Trigger radius visual
+                        createdAt: Date.now(), 
+                        duration: 12000, // Stay for 12s
+                        color: '#f97316' 
+                    });
+                }
+            } else if (id === 'nanoSwarm') {
+                audio.play('shot_1'); // Light tech sound
+                // Spawn 12 Swarm Projectiles
+                const count = 12;
+                for(let i=0; i<count; i++) {
+                    setTimeout(() => {
+                        const angle = game.current.player.turretAngle + (Math.random() - 0.5) * 90; // Wide spread
+                        const rad = angle * (Math.PI/180);
+                        game.current.projectiles.push({
+                            id: `nano-${Date.now()}-${i}`,
+                            ownerId: 'player',
+                            position: { ...game.current.player.position },
+                            angle: angle,
+                            velocity: { x: Math.cos(rad) * 12, y: Math.sin(rad) * 12 }, // Fast
+                            size: { width: 6, height: 6 },
+                            damage: 1, // Low damage
+                            isHoming: true,
+                            turnRate: 15, // High turn rate
+                            isVampiric: true, // HEALS PLAYER
+                            color: '#22c55e',
+                            createdAt: Date.now()
+                        });
+                    }, i * 50); // Staggered launch
+                }
             } else if (id === 'overdrive') {
                 audio.play('overdrive');
                 audio.start('overdriveLoop');

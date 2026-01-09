@@ -34,6 +34,9 @@ const THEMES: Record<string, { main: string; glow: string; bg: string }> = {
   railgun: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
   mortarVolley: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
   laserSweep: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
+  // Goliath Prime Expansion
+  scatterMines: { main: "#f97316", glow: "rgba(249,115,22,0.8)", bg: "rgba(249,115,22,0.15)" }, // Orange
+  nanoSwarm: { main: "#22c55e", glow: "rgba(34,197,94,0.8)", bg: "rgba(34,197,94,0.15)" }, // Green
   default: { main: "#00F0FF", glow: "rgba(0,240,255,0.8)", bg: "rgba(0,240,255,0.15)" },
 };
 
@@ -52,6 +55,8 @@ const Icon = memo(({ name }: { name: string }) => {
     "Railgun": <path d="M21 12L3 12M21 12L15 6M21 12L15 18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
     "Mortar Volley": <path d="M12 3v18m-9-9h18" strokeWidth="2" strokeLinecap="round" />, // Target reticle
     "Laser Sweep": <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />, // Circle
+    "Scatter Mines": <path d="M12 2l2.5 7h7.5l-6 4.5 2.5 7.5-6.5-4.5-6.5 4.5 2.5-7.5-6-4.5h7.5z" />, // Star shape
+    "Nano Swarm": <path d="M4 8a2 2 0 110-4 2 2 0 010 4zm16 0a2 2 0 110-4 2 2 0 010 4zm-8 4a2 2 0 110-4 2 2 0 010 4zm0 12a2 2 0 110-4 2 2 0 010 4zm8-4a2 2 0 110-4 2 2 0 010 4zM4 16a2 2 0 110-4 2 2 0 010 4z" />, // Dots
     default: <circle cx="12" cy="12" r="8" />,
   };
   return (
@@ -89,7 +94,7 @@ const AbilityCard = forwardRef<HTMLDivElement, Props>(({ ability, index = 0, cha
       let labelColor = theme.main;
 
       if (state === "active" && isValidStart) {
-        const dur = (ability.name === "Missile Barrage" || ability.name === "Tesla Storm" || ability.name === "Laser Sweep") ? (ability.duration || 3000) : currentDuration;
+        const dur = (ability.name === "Missile Barrage" || ability.name === "Tesla Storm" || ability.name === "Laser Sweep" || ability.name === "Nano Swarm") ? (ability.duration || 3000) : currentDuration;
         const elapsed = now - startTime;
         progress = clamp(1 - elapsed / dur);
         timeLeftMs = Math.max(0, dur - elapsed);

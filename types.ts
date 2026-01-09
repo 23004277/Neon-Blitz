@@ -83,6 +83,7 @@ export interface Projectile {
   isFrozen?: boolean;
   isChronoShard?: boolean;
   isBossOrb?: boolean;
+  isVampiric?: boolean; // New: Heals owner on hit
   color?: string;
 }
 
@@ -109,7 +110,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'railgun' | 'mortarVolley' | 'laserSweep';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'railgun' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm';
 
 export interface Ability {
   id: AbilityId;

@@ -31,6 +31,43 @@ export const loadGameAssets = () => {
     });
 };
 
+// --- OPTIMIZATION: Cached Pattern Canvas ---
+let cachedHazardCanvas: HTMLCanvasElement | null = null;
+
+function getHazardPatternCanvas() {
+    if (cachedHazardCanvas) return cachedHazardCanvas;
+    
+    cachedHazardCanvas = document.createElement('canvas');
+    cachedHazardCanvas.width = 20; 
+    cachedHazardCanvas.height = 20;
+    const pCtx = cachedHazardCanvas.getContext('2d');
+    if (pCtx) {
+        // Transparent background
+        // Draw Red Stripes
+        pCtx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+        pCtx.lineWidth = 4;
+        
+        // Diagonal line 1
+        pCtx.beginPath();
+        pCtx.moveTo(0, 20);
+        pCtx.lineTo(20, 0);
+        pCtx.stroke();
+        
+        // Diagonal line 2 (Corner fix for tiling)
+        pCtx.beginPath();
+        pCtx.moveTo(-5, 5);
+        pCtx.lineTo(5, -5);
+        pCtx.stroke();
+        
+        // Diagonal line 3 (Corner fix for tiling)
+        pCtx.beginPath();
+        pCtx.moveTo(15, 25);
+        pCtx.lineTo(25, 15);
+        pCtx.stroke();
+    }
+    return cachedHazardCanvas;
+}
+
 export function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, cellSize: number) {
     ctx.save();
     ctx.strokeStyle = '#111827'; 
@@ -266,13 +303,6 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
     }
     
     ctx.restore(); // End boss transform
-
-    // Draw active Laser Sweep (separate from boss rotation to allow absolute beam calculation if needed, but drawing relative is easier)
-    // Actually, drawLaserSweep expects absolute position and angle.
-    // The previous implementation of laser sweep in drawBoss was inside the transforms.
-    // We can call our new shared function here, but we need to undo the context restore or pass correct global coordinates.
-    // Simplest is to keep using the relative drawing inside the boss loop for the BOSS (AI), 
-    // OR just use drawLaserSweep outside the boss matrix.
     
     if (boss.attackState.currentAttack === 'laserSweep' && boss.attackState.phase === 'attacking') {
          drawLaserSweep(ctx, boss.position, boss.turretAngle, '#ff0000');
@@ -1015,6 +1045,39 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
     // --- SPECIAL RENDER FOR HOMING MISSILES ---
     if (proj.isHoming) {
         ctx.scale(1.2, 1.2);
+        
+        // NANO SWARM (Vampiric) - Green Tech Bolts
+        if (proj.isVampiric) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#22c55e'; // Green Glow
+            
+            // Trail
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-15, 0);
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Core Body (Dart shape)
+            ctx.fillStyle = '#bbf7d0';
+            ctx.beginPath();
+            ctx.moveTo(6, 0);
+            ctx.lineTo(-4, -3);
+            ctx.lineTo(-4, 3);
+            ctx.fill();
+            
+            // Engines
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.arc(-4, 0, 2, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+            return;
+        }
+
+        // STANDARD MISSILE
         // Smoke Trail
         ctx.beginPath();
         ctx.moveTo(-10, 0);
@@ -1168,42 +1231,51 @@ export function drawDamageNumbers(ctx: CanvasRenderingContext2D, nums: DamageNum
 }
 
 export function drawTelegraphs(ctx: CanvasRenderingContext2D, telegraphs: Telegraph[], now: number) {
+    if (telegraphs.length === 0) return;
+
+    // Use cached pattern canvas to avoid recreating DOM elements every frame
+    const patternCanvas = getHazardPatternCanvas();
+    const pattern = ctx.createPattern(patternCanvas, 'repeat');
+
     telegraphs.forEach(t => {
         const progress = Math.min(1, (now - t.createdAt) / t.duration);
         ctx.save();
         ctx.translate(t.position.x, t.position.y);
         
-        // Pulsing Effect
-        const pulse = 0.5 + Math.sin(now * 0.01) * 0.2;
+        // Pulsing Effect via Global Alpha instead of re-creating pattern with alpha
+        const pulse = 0.5 + Math.sin(now * 0.01) * 0.3;
+        ctx.globalAlpha = pulse;
         
-        // Hazard Pattern
-        const patternCanvas = document.createElement('canvas');
-        patternCanvas.width = 10; patternCanvas.height = 10;
-        const pCtx = patternCanvas.getContext('2d');
-        if (pCtx) {
-            pCtx.fillStyle = `rgba(239, 68, 68, ${0.1 * pulse})`;
-            pCtx.fillRect(0,0,10,10);
-            pCtx.strokeStyle = `rgba(239, 68, 68, ${0.4 * pulse})`;
-            pCtx.beginPath(); pCtx.moveTo(0,10); pCtx.lineTo(10,0); pCtx.stroke();
+        if (pattern) {
+            ctx.fillStyle = pattern;
+        } else {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; // Fallback
         }
-        const pattern = ctx.createPattern(patternCanvas, 'repeat');
-        if (pattern) ctx.fillStyle = pattern;
         
-        ctx.strokeStyle = `rgba(239, 68, 68, ${pulse})`;
+        ctx.strokeStyle = `rgba(239, 68, 68, 0.8)`;
         ctx.lineWidth = 2;
         
         if (t.type === 'circle') {
             const r = t.radius || 50;
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); 
-            ctx.fill(); ctx.stroke();
+            ctx.beginPath(); 
+            ctx.arc(0, 0, r, 0, Math.PI*2); 
+            ctx.fill(); 
+            ctx.stroke();
+            
+            // Reset alpha for inner ring to be distinct
+            ctx.globalAlpha = 1;
             // Shrinking inner ring
-            ctx.beginPath(); ctx.arc(0, 0, r * (1-progress), 0, Math.PI*2);
+            ctx.beginPath(); 
+            ctx.arc(0, 0, r * (1-progress), 0, Math.PI*2);
             ctx.strokeStyle = '#ffaaaa';
             ctx.stroke();
         }
 
         // --- NEW: Detailed Mine Visual ---
         if (t.id.includes('mine')) {
+             // Resetting alpha for mine specific drawing
+             ctx.globalAlpha = 1;
+             
              // 1. Shadow underneath
              ctx.fillStyle = 'rgba(0,0,0,0.5)';
              ctx.beginPath(); ctx.arc(0, 5, 12, 0, Math.PI*2); ctx.fill();
@@ -1254,365 +1326,156 @@ export function drawTelegraphs(ctx: CanvasRenderingContext2D, telegraphs: Telegr
     });
 }
 
-export function drawAnimations(ctx: CanvasRenderingContext2D, anims: Animation[], now: number) {
-    anims.forEach(anim => {
-        const progress = (now - anim.createdAt) / anim.duration;
-        if (progress > 1) return;
+export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animation[], now: number) {
+    animations.forEach(anim => {
+        const elapsed = now - anim.createdAt;
+        if (elapsed > anim.duration) return;
+        const progress = elapsed / anim.duration;
 
         ctx.save();
         ctx.translate(anim.position.x, anim.position.y);
         
-        if (anim.type === 'finalBlast') {
-            if (progress < 0.1) {
-                const flashOpacity = 1 - (progress / 0.1);
-                ctx.fillStyle = `rgba(255, 255, 255, ${flashOpacity})`;
-                ctx.fillRect(-1000, -1000, 2000, 2000); 
-            }
-            const maxRadius = 400;
-            const currentRadius = maxRadius * Math.pow(progress, 0.5); 
-            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, currentRadius);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-            gradient.addColorStop(0.4, 'rgba(255, 200, 0, 0.5)'); 
-            gradient.addColorStop(0.8, 'rgba(255, 50, 0, 0.8)'); 
-            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)'); 
-
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.fillStyle = gradient;
+        if (anim.type === 'explosion' || anim.type === 'hit') {
+            const radius = (anim.width || 30) * progress;
+            ctx.globalAlpha = 1 - progress;
+            ctx.fillStyle = anim.color || '#f97316';
             ctx.beginPath();
-            ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
             ctx.fill();
-
-            if (progress > 0.1) {
-                const shockProgress = (progress - 0.1) / 0.9;
-                const r = maxRadius * 1.2 * shockProgress;
-                ctx.strokeStyle = `rgba(200, 200, 255, ${1 - shockProgress})`;
-                ctx.lineWidth = 10 * (1 - shockProgress);
-                ctx.beginPath();
-                ctx.arc(0, 0, r, 0, Math.PI * 2);
-                ctx.stroke();
-                
-                const r2 = maxRadius * 0.8 * shockProgress;
-                ctx.strokeStyle = `rgba(255, 100, 100, ${1 - shockProgress})`;
-                ctx.lineWidth = 5;
-                ctx.beginPath();
-                ctx.arc(0, 0, r2, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            const numSpikes = 20;
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 3;
-            for (let i = 0; i < numSpikes; i++) {
-                const angle = (i / numSpikes) * Math.PI * 2 + (now * 0.001);
-                const spikeDist = 50 + (progress * 600);
-                const spikeLen = 40 * (1 - progress);
-                
-                if (progress < 0.8) {
-                    ctx.beginPath();
-                    ctx.moveTo(Math.cos(angle) * spikeDist, Math.sin(angle) * spikeDist);
-                    ctx.lineTo(Math.cos(angle) * (spikeDist + spikeLen), Math.sin(angle) * (spikeDist + spikeLen));
-                    ctx.stroke();
-                }
-            }
-            ctx.globalCompositeOperation = 'source-over'; 
-
         } else if (anim.type === 'shockwave') {
-            const maxR = anim.width || 150;
-            const easeOut = 1 - Math.pow(1 - progress, 3); // Fast out, slow end
-            const r = maxR * easeOut;
-            const alpha = 1 - progress;
-            
-            // 1. Main Blast Ring
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#ef4444';
-            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-            ctx.lineWidth = 15 * (1 - progress);
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI*2);
-            ctx.stroke();
-            
-            // 2. Flower of Life Pattern (Cyber Mandala Explosion)
-            ctx.save();
-            ctx.rotate(progress * Math.PI); // Rotate as it expands
-            
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.8})`; 
-            ctx.fillStyle = `rgba(239, 68, 68, ${alpha * 0.15})`;
-            
-            const subR = r * 0.55; 
-            
-            // Center Circle
-            ctx.beginPath();
-            ctx.arc(0, 0, subR, 0, Math.PI*2);
-            ctx.stroke();
-            ctx.fill();
-            
-            // 6 Surrounding Circles
-            for(let i=0; i<6; i++) {
-                const angle = (i * 60) * (Math.PI / 180);
-                const cx = Math.cos(angle) * (r * 0.5); // Offset from center
-                const cy = Math.sin(angle) * (r * 0.5);
-                
-                ctx.beginPath();
-                ctx.arc(cx, cy, subR, 0, Math.PI*2);
-                ctx.stroke();
-                ctx.fill();
-            }
-            
-            ctx.restore();
-
-            // 3. Shockwave Distortion Lines (Digital cracks)
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = `rgba(252, 165, 165, ${alpha})`; // Light red
-            ctx.lineWidth = 2;
-            const numLines = 12;
-            for(let i=0; i<numLines; i++) {
-                const angle = (i / numLines) * Math.PI * 2 + (progress * 2);
-                const startR = r * 0.8;
-                const endR = r * 1.2;
-                ctx.beginPath();
-                ctx.moveTo(Math.cos(angle)*startR, Math.sin(angle)*startR);
-                ctx.lineTo(Math.cos(angle)*endR, Math.sin(angle)*endR);
-                ctx.stroke();
-            }
-
+             const maxRadius = anim.width || 100;
+             ctx.lineWidth = 4 * (1 - progress);
+             ctx.strokeStyle = anim.color || '#fff';
+             ctx.beginPath();
+             ctx.arc(0, 0, maxRadius * progress, 0, Math.PI * 2);
+             ctx.stroke();
         } else if (anim.type === 'railgunBeam') {
-            const end = anim.targetPosition || {x: 0, y: 0};
-            const dx = end.x - anim.position.x;
-            const dy = end.y - anim.position.y;
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.strokeStyle = `rgba(255, 255, 255, ${1-progress})`;
-            ctx.lineWidth = 6 * (1-progress);
-            ctx.beginPath();
-            ctx.moveTo(0,0);
-            ctx.lineTo(dx, dy);
-            ctx.stroke();
-            ctx.strokeStyle = `rgba(255, 0, 0, ${(1-progress)*0.5})`;
-            ctx.lineWidth = 15 * (1-progress);
-            ctx.beginPath();
-            ctx.moveTo(0,0);
-            ctx.lineTo(dx, dy);
-            ctx.stroke();
-            ctx.globalCompositeOperation = 'source-over';
-
+             // Railgun trail fading
+             if (anim.targetPosition) {
+                 ctx.strokeStyle = `rgba(239, 68, 68, ${1 - progress})`;
+                 ctx.lineWidth = 10 * (1 - progress);
+                 ctx.beginPath();
+                 ctx.moveTo(0,0);
+                 ctx.lineTo(anim.targetPosition.x - anim.position.x, anim.targetPosition.y - anim.position.y);
+                 ctx.stroke();
+             }
         } else if (anim.type === 'lightning') {
-            if (!anim.targetPosition) return;
-            const start = { x: 0, y: 0 }; // relative to translate(anim.position)
-            const end = { x: anim.targetPosition.x - anim.position.x, y: anim.targetPosition.y - anim.position.y };
-            const dist = Math.hypot(end.x, end.y);
-            
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = anim.color || '#00F0FF';
-            ctx.strokeStyle = anim.color || '#00F0FF';
-            ctx.lineWidth = 3 * (1 - progress);
-            
-            ctx.beginPath();
-            ctx.moveTo(start.x, start.y);
-            
-            // Jagged line
-            const segments = Math.floor(dist / 20);
-            for(let i=0; i<segments; i++) {
-                const t = (i + 1) / segments;
-                const base = { x: start.x + end.x * t, y: start.y + end.y * t };
-                const jitter = (1 - progress) * 20;
-                const offset = { x: (Math.random() - 0.5) * jitter, y: (Math.random() - 0.5) * jitter };
-                if (i === segments - 1) {
-                    ctx.lineTo(end.x, end.y);
-                } else {
-                    ctx.lineTo(base.x + offset.x, base.y + offset.y);
-                }
-            }
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-        } else if (anim.type === 'mineExplosion') {
-            const count = 12;
-            
-            ctx.fillStyle = '#f97316'; 
-            for(let i=0; i<count; i++) {
-                const angle = (Math.PI * 2 / count) * i + (now * 0.002);
-                const dist = 10 + (80 * progress);
-                const size = 5 * (1 - progress);
-
-                ctx.save();
-                ctx.translate(Math.cos(angle)*dist, Math.sin(angle)*dist);
-                ctx.rotate(angle + progress * 5); 
-                ctx.beginPath();
-                ctx.rect(-size/2, -size/2, size, size);
-                ctx.fill();
-                ctx.restore();
-            }
-
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.fillStyle = `rgba(255, 80, 0, ${1-progress})`;
-            ctx.beginPath(); 
-            ctx.arc(0, 0, 40 * progress, 0, Math.PI*2); 
-            ctx.fill();
-            
-            ctx.strokeStyle = `rgba(255, 200, 0, ${1-progress})`;
-            ctx.lineWidth = 3 * (1-progress);
-            ctx.beginPath();
-            ctx.arc(0, 0, 60 * progress, 0, Math.PI*2);
-            ctx.stroke();
-
-            ctx.globalCompositeOperation = 'source-over';
-
-        } else if (anim.type === 'explosion') {
-            const count = 8;
-            ctx.strokeStyle = anim.color || '#ef4444';
-            ctx.lineWidth = 2;
-            for(let i=0; i<count; i++) {
-                const angle = (Math.PI * 2 / count) * i;
-                const dist = 30 * progress;
-                const len = 10 * (1-progress);
-                ctx.beginPath();
-                ctx.moveTo(Math.cos(angle)*dist, Math.sin(angle)*dist);
-                ctx.lineTo(Math.cos(angle)*(dist+len), Math.sin(angle)*(dist+len));
-                ctx.stroke();
-            }
-        } else if (anim.type === 'mortarStrike') {
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 4 * (1-progress);
-            ctx.beginPath();
-            ctx.arc(0, 0, 80 * progress, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.fillStyle = '#ef4444';
-            ctx.globalAlpha = 1 - progress;
-            ctx.beginPath();
-            ctx.arc(0, 0, 60 * progress, 0, Math.PI * 2);
-            ctx.fill();
-            if (progress < 0.2) {
-                ctx.fillStyle = '#ffffff';
-                ctx.globalAlpha = 1 - (progress * 5);
-                ctx.beginPath();
-                ctx.arc(0, 0, 40, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            ctx.strokeStyle = '#fca5a5';
-            ctx.globalAlpha = 1 - progress;
-            const debrisCount = 12;
-            for(let i=0; i<debrisCount; i++) {
-                const angle = (Math.PI * 2 / debrisCount) * i;
-                const dist = 20 + (80 * progress);
-                ctx.beginPath();
-                ctx.moveTo(Math.cos(angle)*dist, Math.sin(angle)*dist);
-                ctx.lineTo(Math.cos(angle)*(dist+15), Math.sin(angle)*(dist+15));
-                ctx.stroke();
-            }
+             if (anim.targetPosition) {
+                 const dx = anim.targetPosition.x - anim.position.x;
+                 const dy = anim.targetPosition.y - anim.position.y;
+                 const dist = Math.hypot(dx, dy);
+                 const angle = Math.atan2(dy, dx);
+                 
+                 ctx.rotate(angle);
+                 ctx.strokeStyle = anim.color || '#00F0FF';
+                 ctx.lineWidth = 2;
+                 ctx.shadowBlur = 10;
+                 ctx.shadowColor = anim.color || '#00F0FF';
+                 ctx.globalAlpha = 1 - progress;
+                 
+                 ctx.beginPath();
+                 ctx.moveTo(0, 0);
+                 let cx = 0;
+                 const steps = 10;
+                 for(let i=0; i<steps; i++) {
+                     cx += dist / steps;
+                     const cy = (Math.random() - 0.5) * 20;
+                     ctx.lineTo(cx, cy);
+                 }
+                 ctx.lineTo(dist, 0);
+                 ctx.stroke();
+             }
         } else if (anim.type === 'dashTrail') {
-             // Basic fade out for healing particles
-             ctx.fillStyle = anim.color || '#fff';
+             // Simple particle
              ctx.globalAlpha = 1 - progress;
-             const size = 3 * (1-progress);
-             ctx.fillRect(-size/2, -size/2, size, size);
+             ctx.fillStyle = anim.color || '#fff';
+             ctx.beginPath();
+             ctx.arc(0, 0, 3, 0, Math.PI*2);
+             ctx.fill();
         } else if (anim.type === 'shieldHit') {
              ctx.strokeStyle = anim.color || '#06b6d4';
              ctx.lineWidth = 2;
              ctx.globalAlpha = 1 - progress;
              ctx.beginPath();
-             ctx.arc(0, 0, 35 + (progress * 10), 0, Math.PI * 2);
+             ctx.arc(0, 0, 40 * progress + 30, 0, Math.PI * 2);
              ctx.stroke();
+        } else if (anim.type === 'mortarStrike') {
+             const maxR = 60;
+             ctx.fillStyle = `rgba(239, 68, 68, ${0.5 * (1-progress)})`;
+             ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.fill();
+             
+             ctx.strokeStyle = '#fff';
+             ctx.lineWidth = 2;
+             ctx.globalAlpha = 1 - progress;
+             ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.stroke();
+        } else if (anim.type === 'finalBlast') {
+             // Big white flash
+             const maxR = 1000; // Screen wipe
+             ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress})`;
+             ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.fill();
         }
+
         ctx.restore();
     });
 }
 
-export function drawPowerUp(ctx: CanvasRenderingContext2D, p: PowerUp, now: number) {
+export function drawPowerUp(ctx: CanvasRenderingContext2D, powerUp: PowerUp, now: number) {
+    const elapsed = now - powerUp.spawnTime;
+    const floatY = Math.sin(elapsed * 0.003) * 5;
+    const size = 24;
+
     ctx.save();
-    ctx.translate(p.position.x, p.position.y);
+    ctx.translate(powerUp.position.x, powerUp.position.y + floatY);
     
-    // Floating animation
-    const bob = Math.sin(now * 0.003) * 8; // Increased bob from 5 to 8
-    ctx.translate(0, bob);
+    // Shadow/Glow
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#fff';
 
-    const img = powerUpImages[p.type];
-    const hasImage = img && img.complete && img.naturalWidth !== 0;
-
-    // Type-specific colors for glow/fallback
-    let color = '#ffffff';
-    let label = '?';
-    switch(p.type) {
-        case 'shield': color = '#06b6d4'; label = 'S'; break; // Cyan
-        case 'dualCannon': color = '#f97316'; label = 'D'; break; // Orange
-        case 'regensule': color = '#4ade80'; label = '+'; break; // Green
-        case 'lifeLeech': color = '#ef4444'; label = 'L'; break; // Red
-        case 'homingMissiles': color = '#eab308'; label = 'M'; break; // Yellow
-        case 'reflectorField': color = '#a855f7'; label = 'R'; break; // Purple
-    }
-
-    if (hasImage) {
-        // Draw Glow
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 20; // Increased shadow blur
-        
-        // Draw Image (assuming ~32x32 size, centered)
-        // INCREASED SIZE from 32 to 48
-        const size = 48;
+    const img = powerUpImages[powerUp.type];
+    if (img && img.complete) {
         ctx.drawImage(img, -size/2, -size/2, size, size);
-        
-        // Add a subtle ring
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2; // Thicker line
-        ctx.globalAlpha = 0.6 + Math.sin(now * 0.005) * 0.2; // Pulsing ring
-        ctx.beginPath();
-        ctx.arc(0, 0, size/2 + 6, 0, Math.PI * 2); // Adjusted radius for larger image
-        ctx.stroke();
     } else {
-        // Fallback rendering
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3; // Thicker
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 15;
-        
-        // Rotating Box
-        ctx.save();
-        ctx.rotate(now * 0.001);
-        ctx.strokeRect(-18, -18, 36, 36); // Increased rect size (was -12, 24)
-        ctx.restore();
-        
-        // Inner Fill
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.2;
-        ctx.fillRect(-18, -18, 36, 36); // Increased rect size
-        ctx.globalAlpha = 1.0;
-
-        // Letter
+        // Fallback drawing if image not loaded
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px "Orbitron"'; // Increased font size (was 16px)
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, 0, 0);
-        
-        // Inner pulsing circle
-        ctx.globalAlpha = 0.1 + Math.abs(Math.sin(now * 0.002)) * 0.1;
         ctx.beginPath();
-        ctx.arc(0, 0, 22, 0, Math.PI*2); // Increased radius (was 15)
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
         ctx.fill();
     }
     
+    // Ring
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.restore();
 }
 
 export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone[], now: number) {
-    zones.forEach(z => {
+    zones.forEach(zone => {
+        const elapsed = now - zone.createdAt;
+        if (elapsed > zone.duration) return;
+
         ctx.save();
-        ctx.translate(z.position.x, z.position.y);
+        ctx.translate(zone.position.x, zone.position.y);
         
-        ctx.strokeStyle = z.type === 'chrono' ? '#3b82f6' : '#22c55e';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
+        if (zone.type === 'chrono') {
+             // Time bubble
+             ctx.fillStyle = 'rgba(139, 92, 246, 0.2)';
+             ctx.beginPath();
+             ctx.arc(0, 0, zone.radius, 0, Math.PI*2);
+             ctx.fill();
+             
+             ctx.strokeStyle = '#8b5cf6';
+             ctx.lineWidth = 2;
+             ctx.setLineDash([5, 5]);
+             ctx.rotate(now * 0.001);
+             ctx.beginPath();
+             ctx.arc(0, 0, zone.radius, 0, Math.PI*2);
+             ctx.stroke();
+        }
         
-        // Rotating Effect
-        ctx.rotate(now * 0.001);
-
-        ctx.beginPath(); 
-        // Use local coordinates since we translated
-        ctx.arc(0, 0, z.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.fillStyle = z.type === 'chrono' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)';
-        ctx.fill();
-
         ctx.restore();
     });
 }
