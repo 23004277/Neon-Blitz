@@ -569,12 +569,25 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
         
-        ctx.fillStyle = cFill('#334155');
-        ctx.fillRect(-2, -3, 32, 6);
-        
-        if (!isHit) {
-            ctx.fillStyle = primary;
-            ctx.fillRect(4, -1, 20, 2);
+        if (tank.activePowerUp === 'dualCannon') {
+            ctx.fillStyle = cFill('#334155');
+            // Offset barrels for dual cannon
+            ctx.fillRect(0, -9, 32, 6); // Top/Left barrel
+            ctx.fillRect(0, 3, 32, 6);  // Bottom/Right barrel
+
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(6, -7, 20, 2); // Stripe
+                ctx.fillRect(6, 5, 20, 2);  // Stripe
+            }
+        } else {
+            // Original Single Barrel
+            ctx.fillStyle = cFill('#334155');
+            ctx.fillRect(-2, -3, 32, 6);
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(4, -1, 20, 2);
+            }
         }
 
         ctx.fillStyle = cFill(dark);
@@ -1406,7 +1419,7 @@ export function drawPowerUp(ctx: CanvasRenderingContext2D, p: PowerUp, now: numb
     ctx.translate(p.position.x, p.position.y);
     
     // Floating animation
-    const bob = Math.sin(now * 0.003) * 5;
+    const bob = Math.sin(now * 0.003) * 8; // Increased bob from 5 to 8
     ctx.translate(0, bob);
 
     const img = powerUpImages[p.type];
@@ -1427,41 +1440,42 @@ export function drawPowerUp(ctx: CanvasRenderingContext2D, p: PowerUp, now: numb
     if (hasImage) {
         // Draw Glow
         ctx.shadowColor = color;
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 20; // Increased shadow blur
         
         // Draw Image (assuming ~32x32 size, centered)
-        const size = 32;
+        // INCREASED SIZE from 32 to 48
+        const size = 48;
         ctx.drawImage(img, -size/2, -size/2, size, size);
         
         // Add a subtle ring
         ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2; // Thicker line
         ctx.globalAlpha = 0.6 + Math.sin(now * 0.005) * 0.2; // Pulsing ring
         ctx.beginPath();
-        ctx.arc(0, 0, size/2 + 4, 0, Math.PI * 2);
+        ctx.arc(0, 0, size/2 + 6, 0, Math.PI * 2); // Adjusted radius for larger image
         ctx.stroke();
     } else {
         // Fallback rendering
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3; // Thicker
         ctx.shadowColor = color;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 15;
         
         // Rotating Box
         ctx.save();
         ctx.rotate(now * 0.001);
-        ctx.strokeRect(-12, -12, 24, 24);
+        ctx.strokeRect(-18, -18, 36, 36); // Increased rect size (was -12, 24)
         ctx.restore();
         
         // Inner Fill
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.2;
-        ctx.fillRect(-12, -12, 24, 24);
+        ctx.fillRect(-18, -18, 36, 36); // Increased rect size
         ctx.globalAlpha = 1.0;
 
         // Letter
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px "Orbitron"';
+        ctx.font = 'bold 24px "Orbitron"'; // Increased font size (was 16px)
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(label, 0, 0);
@@ -1469,7 +1483,7 @@ export function drawPowerUp(ctx: CanvasRenderingContext2D, p: PowerUp, now: numb
         // Inner pulsing circle
         ctx.globalAlpha = 0.1 + Math.abs(Math.sin(now * 0.002)) * 0.1;
         ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, Math.PI*2);
+        ctx.arc(0, 0, 22, 0, Math.PI*2); // Increased radius (was 15)
         ctx.fill();
     }
     

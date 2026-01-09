@@ -124,11 +124,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         screenShake: 0,
         wave: 1,
         abilities: [
-             { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 },
-             { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 6000, cooldown: 12000, startTime: 0, chargeDuration: 1500 },
-             { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 },
-             { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 },
-             { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
+           { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 }, { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 6000, cooldown: 12000, startTime: 0, chargeDuration: 1500 }, { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 }, { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 }, { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
+
         ],
         activeAbilityId: null,
         lastPowerUpTime: Date.now(),
@@ -144,7 +141,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     // --- HELPER FUNCTIONS ---
     const spawnPowerUp = (position: Vector) => {
-        if (Math.random() > 0.25) return; // 25% chance
+        if (Math.random() > 0.50) return; // 50% chance
 
         const types: PowerUpType[] = ['dualCannon', 'shield', 'regensule', 'lifeLeech', 'homingMissiles'];
         const type = types[Math.floor(Math.random() * types.length)];
@@ -901,7 +898,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     phaseStartTime: now, 
                     attackData: { 
                         telegraphDuration: teleDur(1000), 
-                        attackDuration: 6000, // Slower sweep for player evasion
+                        attackDuration: 8500, // Slower sweep (nerfed from 6000) so player can outrun it
                         sweepAngleStart: boss.angle, 
                         sweepAngleEnd: boss.angle + 360 
                     } 
@@ -1317,7 +1314,27 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     // Helper for simple firing from center
     const fireProjectile = (owner: TankType, angle: number) => {
-        fireProjectileAt(owner.position, angle, owner.id);
+        if (owner.activePowerUp === 'dualCannon') {
+            const rad = angle * (Math.PI / 180);
+            const perp = rad + Math.PI / 2;
+            const offset = 8; // Distance from center
+
+            // Left Cannon Position
+            const p1 = {
+                x: owner.position.x + Math.cos(perp) * -offset,
+                y: owner.position.y + Math.sin(perp) * -offset
+            };
+            // Right Cannon Position
+            const p2 = {
+                x: owner.position.x + Math.cos(perp) * offset,
+                y: owner.position.y + Math.sin(perp) * offset
+            };
+
+            fireProjectileAt(p1, angle, owner.id);
+            fireProjectileAt(p2, angle, owner.id);
+        } else {
+            fireProjectileAt(owner.position, angle, owner.id);
+        }
     }
 
     const spawnEnemy = () => {

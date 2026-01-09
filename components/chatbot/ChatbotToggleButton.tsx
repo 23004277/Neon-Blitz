@@ -11,30 +11,30 @@ const ChatbotToggleButton: React.FC<ChatbotToggleButtonProps> = ({ onClick, isVi
     <button
       onClick={onClick}
       className={`
-        fixed right-0 top-1/2 -translate-y-1/2 z-50
-        group flex flex-col items-center justify-between gap-6 py-6 px-3 h-64
+        fixed bottom-0 left-1/2 -translate-x-1/2 z-50
+        group flex flex-row items-center justify-between gap-4 px-8 py-3 w-72 h-14
         bg-black/80 backdrop-blur-md 
-        border-l-2 border-y border-y-transparent border-l-[var(--color-primary-cyan)]/40
+        border-t-2 border-x border-x-transparent border-t-[var(--color-primary-cyan)]/40
         text-[var(--color-primary-cyan)]
         transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
-        hover:border-l-[var(--color-primary-cyan)] hover:bg-[var(--color-primary-cyan)]/5 hover:shadow-[-10px_0_30px_rgba(0,240,255,0.15)]
-        ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'}
+        hover:border-t-[var(--color-primary-cyan)] hover:bg-[var(--color-primary-cyan)]/5 hover:shadow-[0_-10px_30px_rgba(0,240,255,0.15)]
+        ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}
       `}
       style={{
-        clipPath: 'polygon(0 20px, 20px 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 20px))',
+        clipPath: 'polygon(20px 0, calc(100% - 20px) 0, 100% 100%, 0 100%)',
       }}
       aria-label="Open AI Assistant"
     >
-      {/* Top Decoration Line */}
-      <div className="w-0.5 h-8 bg-gradient-to-b from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+      {/* Left Decoration Line */}
+      <div className="h-0.5 w-8 bg-gradient-to-r from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
 
       {/* Center Content */}
-      <div className="flex flex-col items-center gap-5 flex-grow justify-center">
+      <div className="flex flex-row items-center gap-3 flex-grow justify-center">
           {/* Icon Container */}
           <div className="relative group-hover:scale-110 transition-transform duration-300">
             <svg 
                 xmlns="http://www.w3.org/2000/svg" 
-                className="w-6 h-6 text-[var(--color-primary-cyan)] drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]" 
+                className="w-5 h-5 text-[var(--color-primary-cyan)] drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]" 
                 fill="none" 
                 viewBox="0 0 24 24" 
                 stroke="currentColor"
@@ -50,20 +50,17 @@ const ChatbotToggleButton: React.FC<ChatbotToggleButtonProps> = ({ onClick, isVi
             </div>
           </div>
 
-          {/* Vertical Text */}
-          <div 
-            className="font-orbitron font-bold text-[10px] tracking-[0.25em] uppercase text-[var(--color-text-dim)] group-hover:text-white transition-colors duration-300 whitespace-nowrap"
-            style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
-          >
+          {/* Text */}
+          <div className="font-orbitron font-bold text-xs tracking-[0.25em] uppercase text-[var(--color-text-dim)] group-hover:text-white transition-colors duration-300 whitespace-nowrap">
             AI Uplink
           </div>
       </div>
 
-      {/* Bottom Decoration Line */}
-      <div className="w-0.5 h-8 bg-gradient-to-t from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+      {/* Right Decoration Line */}
+      <div className="h-0.5 w-8 bg-gradient-to-l from-[var(--color-primary-cyan)] to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
       
       {/* Hover Slide Effect Backing */}
-      <div className="absolute inset-0 bg-white/5 translate-x-full group-hover:translate-x-0 transition-transform duration-500 ease-out -z-10" />
+      <div className="absolute inset-0 bg-white/5 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-out -z-10" />
     </button>
   );
 };
