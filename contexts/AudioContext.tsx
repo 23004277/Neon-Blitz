@@ -25,6 +25,39 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   uiClick: { layers: [{ type: 'triangle', freqStart: 600, freqEnd: 300, gain: 0.03, duration: 0.06 }] },
   uiBack: { layers: [{ type: 'sine', freqStart: 300, freqEnd: 180, gain: 0.03, duration: 0.08 }] },
   uiToggle: { layers: [{ type: 'sine', freqStart: 800, freqEnd: 1200, gain: 0.03, duration: 0.04 }] },
+  
+  // Voice FX
+  // REMASTERED: Higher pitch, shorter duration for "typewriter" effect
+  robotBlip: {
+    layers: [
+      { type: 'sine', freqStart: 1200, freqEnd: 2000, gain: 0.03, duration: 0.03 }, 
+      { type: 'square', freqStart: 800, freqEnd: 1200, gain: 0.02, duration: 0.02 }
+    ]
+  },
+  // NEW: Deep, menacing voice for True Form
+  trueFormVoice: {
+    layers: [
+      { type: 'square', freqStart: 150, freqEnd: 80, gain: 0.15, duration: 0.08 }, // Deep digital
+      { type: 'sawtooth', freqStart: 60, freqEnd: 40, gain: 0.2, duration: 0.1 },   // Sub rumble
+      { type: 'noise', filterFreq: 400, gain: 0.05, duration: 0.05 } // Static grit
+    ]
+  },
+  
+  // Transformation FX
+  transformCharge: {
+    layers: [
+      { type: 'sawtooth', freqStart: 50, freqEnd: 200, gain: 0.1, duration: 1.5, modFreq: 20 },
+      { type: 'square', freqStart: 100, freqEnd: 800, gain: 0.08, duration: 1.5 },
+      { type: 'noise', filterFreq: 200, filterSweep: { start: 200, end: 4000 }, gain: 0.1, duration: 1.5 }
+    ]
+  },
+  transformBang: {
+    layers: [
+      { type: 'noise', filterFreq: 1000, gain: 0.4, duration: 0.8 },
+      { type: 'sine', freqStart: 100, freqEnd: 20, gain: 0.5, duration: 1.0 },
+      { type: 'square', freqStart: 400, freqEnd: 100, gain: 0.2, duration: 0.4 }
+    ]
+  },
 
   // Combat - Shots
   shot_1: { layers: [{ type: 'triangle', freqStart: 1500, freqEnd: 150, gain: 0.1, duration: 0.12 }, { type: 'noise', filterFreq: 4000, gain: 0.05, duration: 0.05 }] },
@@ -126,28 +159,44 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   bossExplosion: { layers: [{ type: 'noise', filterFreq: 400, gain: 0.3, duration: 1.5 }] },
   explosion: { layers: [{ type: 'noise', filterFreq: 800, gain: 0.15, duration: 0.5 }] },
   
-  // New Boss Moves
-  bossShockwave: { 
+  // --- REDESIGNED SHOCKWAVE SOUNDS ---
+  bossShockwaveCharge: {
     layers: [
-        { type: 'sine', freqStart: 150, freqEnd: 10, gain: 0.5, duration: 0.8 }, 
-        { type: 'noise', filterFreq: 300, gain: 0.3, duration: 0.6 }
-    ] 
+      // Deep shuddering bass (Reactor Charging)
+      { type: 'sawtooth', freqStart: 60, freqEnd: 120, gain: 0.2, duration: 1.0, modFreq: 12 }, 
+      // High pitch whine (Capacitor)
+      { type: 'sine', freqStart: 200, freqEnd: 1200, gain: 0.1, duration: 1.0 },
+      // Rising noise swell
+      { type: 'noise', filterFreq: 200, filterSweep: { start: 200, end: 2000 }, gain: 0.15, duration: 1.0 }
+    ]
+  },
+  bossShockwaveFire: {
+    layers: [
+      // The "Thump" - Earthquake Sub
+      { type: 'sine', freqStart: 100, freqEnd: 5, gain: 0.7, duration: 0.8 }, 
+      // The "Crack" - Explosion Body
+      { type: 'noise', filterFreq: 800, gain: 0.4, duration: 0.6 },
+      // The "Zip" - Sci-fi impact sweep
+      { type: 'square', freqStart: 1800, freqEnd: 100, gain: 0.2, duration: 0.25 }
+    ]
   },
   
-  // IMPROVED RAILGUN SOUNDS
-  bossRailgunCharge: { 
+  // --- OMNI BARRAGE SOUNDS ---
+  omniCharge: { 
     layers: [
-        { type: 'sawtooth', freqStart: 150, freqEnd: 2200, gain: 0.15, duration: 1.5, modFreq: 20 },
-        { type: 'triangle', freqStart: 100, freqEnd: 1000, gain: 0.1, duration: 1.5 }
+        { type: 'sawtooth', freqStart: 200, freqEnd: 800, gain: 0.2, duration: 1.5, modFreq: 60 }, 
+        { type: 'sine', freqStart: 400, freqEnd: 1200, gain: 0.15, duration: 1.5 },
+        { type: 'noise', filterFreq: 500, filterSweep: { start: 500, end: 2500 }, gain: 0.1, duration: 1.5 }
     ] 
   },
-  bossRailgunFire: { 
+  omniFire: { 
     layers: [
-        { type: 'square', freqStart: 2500, freqEnd: 100, gain: 0.3, duration: 0.3 }, // Crack
-        { type: 'sawtooth', freqStart: 200, freqEnd: 40, gain: 0.3, duration: 0.4 }, // Punch
-        { type: 'noise', filterFreq: 6000, gain: 0.2, duration: 0.25 } // Blast
+        { type: 'noise', filterFreq: 4000, gain: 0.3, duration: 0.2 }, 
+        { type: 'square', freqStart: 800, freqEnd: 100, gain: 0.2, duration: 0.3 }, 
+        { type: 'triangle', freqStart: 1200, freqEnd: 200, gain: 0.15, duration: 0.2 } 
     ] 
   },
+
   mineDeploy: { 
     layers: [
       { type: 'square', freqStart: 600, freqEnd: 150, gain: 0.15, duration: 0.3 }, 
@@ -286,9 +335,15 @@ export class AudioController {
 
     const t = this.ctx.currentTime;
 
+    // RANDOMIZATION FACTORS
+    // Slight random variances to make every sound unique
+    const speedVar = 0.9 + Math.random() * 0.2; // 0.9x to 1.1x speed
+    const gainVar = 0.9 + Math.random() * 0.2;  // 0.9x to 1.1x volume
+    const detuneVar = (Math.random() - 0.5) * 300; // -150 to +150 cents pitch shift
+
     config.layers.forEach((layer) => {
-      const startTime = t + (layer.delay || 0);
-      const duration = layer.duration;
+      const startTime = t + (layer.delay || 0) / speedVar;
+      const duration = layer.duration / speedVar;
 
       const panner = this.ctx.createStereoPanner();
       let panVal = 0;
@@ -305,24 +360,40 @@ export class AudioController {
         if (!this.noiseBuffer) return;
         const bufSrc = this.ctx.createBufferSource();
         bufSrc.buffer = this.noiseBuffer;
+        
+        // Apply detune to noise playback rate for pitch effect
+        if (detuneVar !== 0) {
+            bufSrc.playbackRate.value = Math.pow(2, detuneVar / 1200);
+        }
+        
         source = bufSrc;
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(layer.filterFreq || 1200, startTime);
+        if (layer.filterSweep) {
+            filter.frequency.setValueAtTime(layer.filterSweep.start, startTime);
+            filter.frequency.exponentialRampToValueAtTime(layer.filterSweep.end, startTime + duration);
+        }
 
         source.connect(filter);
         filter.connect(gain);
       } else {
         const osc = this.ctx.createOscillator();
-        osc.type = layer.type;
+        osc.type = 'sine'; // Fallback if type mismatch
+        try { (osc as any).type = layer.type; } catch(e) {}
+        
         osc.frequency.setValueAtTime(layer.freqStart || 440, startTime);
         if (layer.freqEnd) {
           osc.frequency.exponentialRampToValueAtTime(layer.freqEnd, startTime + duration);
         }
+        
+        // Apply random detune
+        osc.detune.value = detuneVar;
+
         if (layer.modFreq) {
           const lfo = this.ctx.createOscillator();
-          lfo.frequency.value = layer.modFreq;
+          lfo.frequency.value = layer.modFreq * speedVar; // Scale LFO speed too
           const lfoGain = this.ctx.createGain();
           lfoGain.gain.value = 20;
           lfo.connect(lfoGain).connect((osc as any).frequency);
@@ -334,7 +405,7 @@ export class AudioController {
       }
 
       gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(layer.gain, startTime + 0.01);
+      gain.gain.linearRampToValueAtTime(layer.gain * gainVar, startTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
       gain.connect(panner);
@@ -651,23 +722,23 @@ export class AudioController {
                 noise.stop(stopTime);
             }
         });
-    } else if (key === 'bossRailgunCharge') {
-        // IMPROVED: Player Railgun Charge (Held)
+    } else if (key === 'omniCharge') {
+        // NEW: Omni Barrage Charge Loop
         const osc = this.ctx.createOscillator();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, t);
-        osc.frequency.exponentialRampToValueAtTime(2500, t + 1.5);
+        osc.frequency.setValueAtTime(200, t);
+        osc.frequency.exponentialRampToValueAtTime(800, t + 1.5);
         
         const sub = this.ctx.createOscillator();
-        sub.type = 'square';
-        sub.frequency.setValueAtTime(50, t);
-        sub.frequency.exponentialRampToValueAtTime(200, t + 1.5);
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(100, t);
+        sub.frequency.exponentialRampToValueAtTime(400, t + 1.5);
         
         const filter = this.ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.Q.value = 5;
-        filter.frequency.setValueAtTime(300, t);
-        filter.frequency.exponentialRampToValueAtTime(8000, t + 1.5);
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(400, t);
+        filter.frequency.exponentialRampToValueAtTime(2000, t + 1.5);
+        filter.Q.value = 2;
         
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0, t);

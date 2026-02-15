@@ -14,19 +14,22 @@ const opponents: DuelConfig[] = [
   { 
     opponentId: 'rogue-scout', 
     opponentType: 'tank', 
-    tier: 'basic', 
+    tier: 'basic',
+    chassis: 'rogue-scout',
     opponentName: 'Rogue Scout',
   },
   { 
     opponentId: 'iron-bastion', 
     opponentType: 'tank', 
-    tier: 'intermediate', 
+    tier: 'intermediate',
+    chassis: 'iron-bastion',
     opponentName: 'Iron Bastion',
   },
   { 
     opponentId: 'goliath-prime', 
     opponentType: 'boss', 
     bossType: 'goliath',
+    chassis: 'goliath-prime',
     opponentName: 'Goliath Prime',
   }
 ];
@@ -76,6 +79,7 @@ const DuelSelectionScreen: React.FC<DuelSelectionScreenProps> = ({ navigateTo, s
                 name: selectedOpponent.opponentName,
                 type: 'enemy',
                 tier: selectedOpponent.tier,
+                chassis: selectedOpponent.chassis,
                 size: { width: 40, height: 40 },
                 color: selectedOpponent.tier === 'intermediate' ? '#f97316' : '#FF003C',
                 score: 0, kills: 0, deaths: 0
@@ -228,6 +232,7 @@ const DuelSelectionScreen: React.FC<DuelSelectionScreenProps> = ({ navigateTo, s
                           type={isBoss ? 'boss' : 'enemy'} 
                           tier={opponent.tier}
                           bossType={opponent.bossType}
+                          chassis={opponent.chassis}
                           color={isBoss ? '#ef4444' : opponent.tier === 'intermediate' ? '#f97316' : '#FF003C'} 
                           className="w-6 h-6" 
                        />

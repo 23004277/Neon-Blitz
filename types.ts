@@ -25,6 +25,7 @@ export interface DuelConfig {
   opponentType: 'tank' | 'boss';
   tier?: 'basic' | 'intermediate';
   bossType?: 'goliath' | 'viper' | 'sentinel';
+  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime'; // Added chassis
   opponentName: string;
 }
 
@@ -98,7 +99,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -110,7 +111,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'railgun' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'omniBarrage' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm';
 
 export interface Ability {
   id: AbilityId;
@@ -154,6 +155,7 @@ export interface Tank {
   status: 'spawning' | 'active' | 'dying' | 'dead';
   tier?: 'basic' | 'intermediate';
   bossType?: 'goliath' | 'viper' | 'sentinel'; // Added to Tank for Sandbox mode players
+  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime' | 'goliath-prime-overdrive'; // Added for specific visuals
   spawnTime?: number;
   position: Vector;
   velocity: Vector;
@@ -202,11 +204,12 @@ export interface Telegraph {
 
 export interface EffectZone {
   id: string;
-  type: 'chrono' | 'poison';
+  type: 'chrono' | 'poison' | 'fissure';
   position: Vector;
   radius: number;
   createdAt: number;
   duration: number;
+  lastTick?: number; // For DoT logic
 }
 
 export interface Minion {
@@ -246,7 +249,7 @@ export interface Boss {
   statusEffects?: StatusEffect[];
   shieldSegments?: { angle: number, health: number, maxHealth: number, active: boolean }[]; // For Sentinel
   attackState: {
-    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'railgun';
+    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'omniBarrage';
     phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering' | 'charging';
     phaseStartTime: number;
     attackData?: {
@@ -258,7 +261,7 @@ export interface Boss {
       sweepAngleEnd?: number;
       attackOrigin?: Vector;
       attackAngle?: number;
-      targetPosition?: Vector; // For railgun locking
+      targetPosition?: Vector; // For locking
       telegraphId?: string; 
       telegraphIds?: string[]; // For multiple scatter mines
     };
@@ -279,6 +282,15 @@ export interface DamageIndicator {
     angle: number; // angle from player to damage source
     createdAt: number;
     duration: number;
+}
+
+export interface CutsceneState {
+  active: boolean;
+  phase: 'intro' | 'dialogue' | 'transform' | 'outro';
+  startTime: number;
+  dialogueText: string;
+  dialogueIndex: number;
+  targetCamera: { x: number, y: number, zoom: number };
 }
 
 // Minimal state for the React Render loop (UI only)

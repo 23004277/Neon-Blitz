@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType } from '../../types';
+import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType, CutsceneState } from '../../types';
 import { Difficulty } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAudio } from '../../contexts/AudioContext';
 
 import HUD from './HUD';
 import AbilityHotbar from './AbilityHotbar';
-import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCyberBeam, drawLastStandWarning, drawLaserSweep, loadGameAssets } from './canvasRenderer';
+import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCyberBeam, drawLastStandWarning, drawLaserSweep, loadGameAssets, drawCutsceneOverlay } from './canvasRenderer';
 import Leaderboard from './Leaderboard';
 import { generateUsername } from './usernameGenerator';
 import BossHealthBar from './BossHealthBar';
@@ -45,6 +45,10 @@ interface InternalGameState {
     lastEnemySpawnTime: number;
     lastBeamTick: number; // For Beam damage throttling
     lastBossBeamTick: number; // For Boss Laser damage
+    
+    // Cinematic State
+    cutscene: CutsceneState;
+    camera: { x: number, y: number, zoom: number };
 }
 
 const initialPlayer: TankType = {
@@ -140,7 +144,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         lastPowerUpTime: Date.now(),
         lastEnemySpawnTime: Date.now(),
         lastBeamTick: 0,
-        lastBossBeamTick: 0
+        lastBossBeamTick: 0,
+        
+        // Cinematic Init
+        cutscene: {
+            active: false,
+            phase: 'intro',
+            startTime: 0,
+            dialogueText: '',
+            dialogueIndex: 0,
+            targetCamera: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1 }
+        },
+        camera: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1 }
     });
 
     const [uiState, setUiState] = useState<UIState>({
@@ -150,7 +165,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     // --- HELPER FUNCTIONS ---
     const spawnPowerUp = (position: Vector) => {
-        if (Math.random() > 0.50) return; // 50% chance
+        // 50% chance normally, 100% in sandbox for fun/testing
+        if (config.mode !== 'sandbox' && Math.random() > 0.50) return; 
 
         const types: PowerUpType[] = ['dualCannon', 'shield', 'regensule', 'lifeLeech', 'homingMissiles'];
         const type = types[Math.floor(Math.random() * types.length)];
@@ -164,6 +180,39 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     };
 
     const applyPowerUp = (tank: TankType, type: PowerUpType) => {
+        const isOverdrive = tank.chassis === 'goliath-prime-overdrive';
+        
+        // UNIQUE INTERACTION: True Form Goliath Power-up Overrides
+        if (isOverdrive) {
+            if (type === 'regensule') {
+                // Massive Heal instead of trickling
+                const healAmt = Math.floor(tank.maxHealth * 0.5);
+                tank.health = Math.min(tank.maxHealth, tank.health + healAmt);
+                game.current.damageNumbers.push({
+                    id: `pup-heal-true-${Date.now()}`, text: `+${healAmt}`, position: { ...tank.position, y: tank.position.y - 60 }, createdAt: Date.now(), duration: 1500, color: '#22c55e'
+                });
+                audio.play('abilityReady'); // Heavier sound
+                return; // Instant consume
+            }
+            if (type === 'shield') {
+                // Reactive Super Shield (visuals handled in drawTank via tank.activePowerUp)
+                tank.activePowerUp = type;
+                tank.powerUpExpireTime = Date.now() + 20000;
+                tank.shieldHealth = 10; // Double shield
+                return;
+            }
+            if (type === 'homingMissiles') {
+                // Swarm reload
+                tank.activePowerUp = type;
+                tank.powerUpExpireTime = Date.now() + 20000;
+                tank.homingMissileCount = 30; // Triple count
+                return;
+            }
+            // Dual Cannon behaves as "Quad Cannon" in fireProjectile
+            // Life Leech is standard but stronger due to damage output
+        }
+
+        // Standard Powerups
         tank.activePowerUp = type;
         tank.powerUpExpireTime = Date.now() + 15000; // 15s duration
         
@@ -202,6 +251,123 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         spawnPowerUp(e.position);
     };
 
+    // --- CINEMATIC SEQUENCER ---
+    const updateCutscene = (now: number, dt: number) => {
+        const g = game.current;
+        const c = g.cutscene;
+        const cam = g.camera;
+
+        if (!c.active) return;
+        
+        const dialogue1 = "Do you really think you can beat me this easily?";
+        const dialogue2 = "Allow me to demonstrate true power!";
+
+        // Phase Logic
+        if (c.phase === 'intro') {
+            // Zoom into player
+            c.targetCamera = { x: g.player.position.x, y: g.player.position.y, zoom: 2.0 };
+            const elapsed = now - c.startTime;
+            if (elapsed > 1000) {
+                c.phase = 'dialogue';
+                c.startTime = now;
+                c.dialogueText = dialogue1;
+                c.dialogueIndex = 0;
+            }
+        } else if (c.phase === 'dialogue') {
+            // Typewriter effect
+            if (c.dialogueIndex < c.dialogueText.length) {
+                // Slower speed for drama: 0.03 characters per ms roughly
+                const currentChar = c.dialogueText[Math.floor(c.dialogueIndex)];
+                let speed = 0.03 * dt;
+                
+                // Pause for dramatic punctuation
+                if (['.', '!', '?'].includes(currentChar)) {
+                    speed *= 0.1; // 10x slower on punctuation
+                }
+
+                const oldIdx = Math.floor(c.dialogueIndex);
+                c.dialogueIndex += speed;
+                const newIdx = Math.floor(c.dialogueIndex);
+                
+                if (newIdx > oldIdx) {
+                     // Use True Form Voice
+                     if (newIdx % 3 === 0) audio.play('trueFormVoice'); 
+                }
+            } else {
+                // Wait for a bit then switch text or phase
+                const elapsed = now - c.startTime;
+                
+                if (c.dialogueText === dialogue1 && elapsed > 4000) { // Longer read time
+                     c.dialogueText = dialogue2;
+                     c.dialogueIndex = 0;
+                     c.startTime = now;
+                } else if (c.dialogueText === dialogue2 && elapsed > 3500) {
+                     c.phase = 'transform';
+                     c.startTime = now;
+                     // Trigger FX
+                     audio.play('transformCharge');
+                }
+            }
+        } else if (c.phase === 'transform') {
+            // Shake and Flash
+            g.screenShake = 5 + Math.random() * 5;
+            const elapsed = now - c.startTime;
+            
+            // Render the implosion charge effect during this phase (draw logic handles it via animation list)
+            // But we need to add the animation once
+            if (elapsed < 100) {
+                 g.animations.push({
+                     id: `tf-charge-${now}`, type: 'transformCharge', position: g.player.position, createdAt: now, duration: 1500
+                });
+            }
+            
+            if (elapsed > 1500 && g.player.chassis !== 'goliath-prime-overdrive') {
+                // THE MOMENT OF TRANSFORMATION
+                g.player.chassis = 'goliath-prime-overdrive';
+                g.player.color = '#b91c1c'; // Dark red
+                g.player.maxHealth += 500;
+                g.player.health = g.player.maxHealth;
+                g.player.size = { width: 120, height: 120 }; // Bigger
+                
+                audio.play('transformBang');
+                g.screenShake = 60;
+                g.animations.push({
+                     id: `tf-flash-${now}`, type: 'transformFlash', position: g.player.position, createdAt: now, duration: 1000
+                });
+                
+                // Add Overdrive ability permanently active visual or logic?
+                // Just use the chassis type in renderer to draw it special
+            }
+            
+            if (elapsed > 3000) {
+                c.phase = 'outro';
+                c.startTime = now;
+            }
+        } else if (c.phase === 'outro') {
+            // Zoom out
+            c.targetCamera = { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1.0 };
+            
+            // Camera lerp handled below
+            // Check if camera is close enough to reset
+            if (Math.abs(cam.zoom - 1.0) < 0.05) {
+                c.active = false;
+                // Restore game flow
+                setUiState(prev => ({ 
+                    ...prev, 
+                    playerHealth: g.player.health, 
+                    playerMaxHealth: g.player.maxHealth 
+                }));
+            }
+        }
+
+        // Camera Smoothing
+        const lerp = 0.05;
+        cam.x += (c.targetCamera.x - cam.x) * lerp;
+        cam.y += (c.targetCamera.y - cam.y) * lerp;
+        cam.zoom += (c.targetCamera.zoom - cam.zoom) * lerp;
+    };
+
+
     // --- LOOP ---
     useEffect(() => {
         loadGameAssets(); // Initialize assets
@@ -222,23 +388,26 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  game.current.player.health = 5;
                  game.current.player.size = { width: 30, height: 30 };
                  game.current.player.color = '#00F0FF';
+                 game.current.player.chassis = 'rogue-scout';
              } else if (characterId === 'iron-bastion') {
                  game.current.player.maxHealth = 25;
                  game.current.player.health = 25;
                  game.current.player.size = { width: 50, height: 50 };
                  game.current.player.tier = 'intermediate';
                  game.current.player.color = '#f97316';
+                 game.current.player.chassis = 'iron-bastion';
              } else if (characterId === 'goliath-prime') {
                  game.current.player.maxHealth = 200;
                  game.current.player.health = 200;
                  game.current.player.size = { width: 100, height: 100 }; // Big!
                  game.current.player.bossType = 'goliath';
                  game.current.player.color = '#ef4444';
+                 game.current.player.chassis = 'goliath-prime';
                  
                  // REPLACE ABILITIES WITH EXPANDED BOSS MOVESET
                  game.current.abilities = [
                      { id: 'shockwave', name: 'Shockwave', keyBinding: 'Q', state: 'ready', duration: 500, cooldown: 5000, startTime: 0 },
-                     { id: 'railgun', name: 'Railgun', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 8000, startTime: 0, chargeDuration: 1500 }, // Matches telegraph duration
+                     { id: 'omniBarrage', name: 'Omni Barrage', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 10000, startTime: 0, chargeDuration: 1500 }, // New replacement skill
                      { id: 'mortarVolley', name: 'Mortar Volley', keyBinding: 'R', state: 'ready', duration: 1000, cooldown: 10000, startTime: 0 },
                      { id: 'laserSweep', name: 'Laser Sweep', keyBinding: 'F', state: 'ready', duration: 8500, cooldown: 15000, startTime: 0 }, // Matched to boss nerf duration
                      { id: 'scatterMines', name: 'Scatter Mines', keyBinding: 'T', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
@@ -258,7 +427,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
         // --- DUEL MODE INITIALIZATION ---
         if (config.mode === 'duel' && config.duelConfig) {
-            const { opponentType, tier, bossType, opponentName } = config.duelConfig;
+            const { opponentType, tier, bossType, opponentName, chassis } = config.duelConfig;
             
             // Set Player to Active immediately for Duel
             game.current.player.status = 'active';
@@ -270,7 +439,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     game.current.boss.spawnTime = 0;
                 }
             } else {
-                spawnDuelEnemy(opponentName, tier);
+                spawnDuelEnemy(opponentName, tier, chassis);
             }
         }
 
@@ -297,6 +466,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     // Stop any active loops
                     audio.stop('overdriveLoop');
                     audio.stop('beamCharge');
+                    audio.stop('omniCharge'); // Added
                     audio.stop('beamFire');
                     audio.stop('bossLaserLoop');
                     audio.stopEngine('player'); // Stop engine sound
@@ -326,6 +496,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const now = Date.now();
         const g = game.current;
         const player = g.player;
+
+        // Cutscene Update
+        if (g.cutscene.active) {
+            updateCutscene(now, dt);
+            return; // STOP PHYSICS
+        }
 
         // Normalization factor: target 60 FPS (16.67ms per frame)
         const timeScale = dt / 16.67; 
@@ -386,7 +562,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         // Check PowerUp Pickups
         game.current.powerUps = game.current.powerUps.filter(p => {
             const dist = Math.hypot(player.position.x - p.position.x, player.position.y - p.position.y);
-            if (dist < player.size.width) {
+            const pickupRadius = player.bossType === 'goliath' ? 80 : player.size.width; // Larger pickup radius for Goliath
+            if (dist < pickupRadius) {
                 applyPowerUp(player, p.type);
                 audio.play('abilityReady');
                 game.current.damageNumbers.push({
@@ -403,9 +580,35 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         });
         
         // --- PLAYER MINE DETECTION ---
+        // Enhanced Logic: If True Form, mines move towards enemies
+        const isTrueForm = player.chassis === 'goliath-prime-overdrive';
+        
         g.telegraphs = g.telegraphs.filter(t => {
             if (t.id.startsWith('mine-player-')) {
                 const targets = [...g.enemies, g.boss].filter(tgt => tgt && tgt.status === 'active');
+                
+                // TRUE FORM: Magnetic Mines
+                if (isTrueForm) {
+                    let closestTarget: any = null;
+                    let closestDist = 9999;
+                    
+                    for (const target of targets) {
+                         if (!target) continue;
+                         const dist = Math.hypot(target.position.x - t.position.x, target.position.y - t.position.y);
+                         if (dist < 400 && dist < closestDist) { // 400 range magnet
+                             closestDist = dist;
+                             closestTarget = target;
+                         }
+                    }
+                    
+                    if (closestTarget) {
+                        const angle = Math.atan2(closestTarget.position.y - t.position.y, closestTarget.position.x - t.position.x);
+                        const speed = 2.0 * timeScale;
+                        t.position.x += Math.cos(angle) * speed;
+                        t.position.y += Math.sin(angle) * speed;
+                    }
+                }
+
                 let detonated = false;
                 for (const target of targets) {
                     if (!target) continue;
@@ -444,6 +647,39 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             }
             return true;
         });
+        
+        // --- PROCESS EFFECT ZONES (Fissure Damage) ---
+        g.effectZones.forEach(zone => {
+             if (zone.type === 'fissure') {
+                 if (!zone.lastTick || now - zone.lastTick > 500) { // Tick every 500ms
+                     zone.lastTick = now;
+                     // Damage enemies in zone
+                     const targets = [...g.enemies, g.boss].filter(tgt => tgt && tgt.status === 'active');
+                     targets.forEach(tgt => {
+                         if (!tgt) return;
+                         const d = Math.hypot(tgt.position.x - zone.position.x, tgt.position.y - zone.position.y);
+                         if (d < zone.radius) {
+                             const dmg = 5;
+                             tgt.health -= dmg;
+                             tgt.lastHitTime = now;
+                             g.damageNumbers.push({id: `fissure-dmg-${now}-${tgt.id}`, text: dmg.toString(), position: {...tgt.position, y: tgt.position.y - 20}, createdAt: now, duration: 800, color: '#f97316'});
+                             if (tgt.health <= 0) {
+                                 tgt.status = 'dead';
+                                 if ('type' in tgt && tgt.type === 'enemy') handleEnemyDeath(tgt);
+                                 else if ('bossType' in tgt) {
+                                      g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: tgt.position, createdAt: now, duration: 1000, color: 'red' });
+                                      audio.play('bossExplosion');
+                                      audio.stopEngine('boss');
+                                      setTimeout(() => { game.current.boss = null; }, 1000);
+                                 }
+                             }
+                         }
+                     });
+                 }
+             }
+        });
+        // Cleanup expired zones
+        g.effectZones = g.effectZones.filter(z => now < z.createdAt + z.duration);
 
         // 1. Player Movement
         let playerSpeed = 0;
@@ -464,6 +700,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     else if (config.sandboxConfig.characterId === 'iron-bastion') baseSpeed = 2.0;
                     else if (config.sandboxConfig.characterId === 'goliath-prime') baseSpeed = 1.5;
                 }
+                
+                // Boost speed if Overdrive chassis
+                if (player.chassis === 'goliath-prime-overdrive') baseSpeed = 2.5;
 
                 const speed = baseSpeed * (g.abilities.find(a=>a.id==='overdrive')?.state === 'active' ? 1.5 : 1) * timeScale;
                 player.position.x += dx * speed;
@@ -527,7 +766,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
 
         // AI Update
-        g.enemies.forEach(e => updateEnemyAI(e, player, now, timeScale, diffConfig, () => {
+        g.enemies.forEach(e => updateEnemyAI(e, player, game.current.powerUps, now, timeScale, diffConfig, () => {
             const angle = e.turretAngle;
             if (e.activePowerUp === 'homingMissiles' && (e.homingMissileCount || 0) > 0) {
                  fireMissile(e.id, false); 
@@ -589,31 +828,40 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (a.id === 'laserSweep' && a.state === 'active') {
                  g.player.turretAngle += 0.706 * timeScale;
                  
+                 // UNIQUE INTERACTION: True Form X-Pattern Laser
+                 const isTrueForm = g.player.chassis === 'goliath-prime-overdrive';
+                 const laserCount = isTrueForm ? 4 : 1;
+                 const damage = isTrueForm ? 10 : 5;
+                 
                  if (now - g.lastBossBeamTick > 100) { 
                     g.lastBossBeamTick = now;
                     // Beam originates from tip: Goliath 65, Standard 30
                     const tipOffset = g.player.bossType === 'goliath' ? 65 : 30;
-                    const firePos = getOffsetPoint(g.player.position, g.player.turretAngle, tipOffset, 0);
                     
-                    const rad = g.player.turretAngle * (Math.PI/180); 
-                    const beamLen = 900;
-                    const p1 = firePos; 
-                    const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
-                    
-                    g.enemies.forEach(e => {
-                        const l2 = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
-                        let t = ((e.position.x - p1.x) * (p2.x - p1.x) + (e.position.y - p1.y) * (p2.y - p1.y)) / l2;
-                        t = Math.max(0, Math.min(1, t));
-                        const proj = { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
-                        const dist = Math.hypot(e.position.x - proj.x, e.position.y - proj.y);
+                    for(let i=0; i < laserCount; i++) {
+                        const beamAngle = g.player.turretAngle + (isTrueForm ? i * 90 : 0);
+                        const firePos = getOffsetPoint(g.player.position, beamAngle, tipOffset, 0);
                         
-                        if (dist < 30) {
-                            e.health -= 5;
-                            e.lastHitTime = now;
-                            g.damageNumbers.push({id: `sweep-${now}-${e.id}`, text: '5', position: e.position, createdAt: now, duration: 500, color: '#f00'});
-                            if (e.health <= 0) handleEnemyDeath(e);
-                        }
-                    });
+                        const rad = beamAngle * (Math.PI/180); 
+                        const beamLen = 900;
+                        const p1 = firePos; 
+                        const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
+                        
+                        g.enemies.forEach(e => {
+                            const l2 = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
+                            let t = ((e.position.x - p1.x) * (p2.x - p1.x) + (e.position.y - p1.y) * (p2.y - p1.y)) / l2;
+                            t = Math.max(0, Math.min(1, t));
+                            const proj = { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+                            const dist = Math.hypot(e.position.x - proj.x, e.position.y - proj.y);
+                            
+                            if (dist < 30) {
+                                e.health -= damage;
+                                e.lastHitTime = now;
+                                g.damageNumbers.push({id: `sweep-${now}-${e.id}-${i}`, text: damage.toString(), position: e.position, createdAt: now, duration: 500, color: isTrueForm ? '#fbbf24' : '#f00'});
+                                if (e.health <= 0) handleEnemyDeath(e);
+                            }
+                        });
+                    }
                 }
                 
                 if (now > a.startTime + (a.duration || 8500)) {
@@ -631,6 +879,13 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
             }
             else if (a.id === 'scatterMines' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 500)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'omniBarrage' && a.state === 'active') {
                 if (now > a.startTime + (a.duration || 500)) {
                     newState = 'cooldown';
                     newStartTime = now;
@@ -703,12 +958,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     stateChanged = true;
                 }
             }
-            else if ((a.id === 'cyberBeam' || a.id === 'railgun') && a.state === 'active') {
+            else if (a.id === 'cyberBeam' && a.state === 'active') {
                 if (now > a.startTime + (a.duration || 6000)) {
                     newState = 'cooldown';
                     newStartTime = now;
                     stateChanged = true;
-                    if (a.id === 'cyberBeam') audio.stop('beamFire');
+                    audio.stop('beamFire');
                 } else {
                     checkBeamCollision(now);
                 }
@@ -781,7 +1036,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const mouse = g.mouse;
         
         let beamStart = { x: player.position.x, y: player.position.y };
-        if (player.bossType === 'goliath') {
+        if (player.bossType === 'goliath' || player.chassis === 'goliath-prime-overdrive') {
              beamStart = getOffsetPoint(player.position, player.turretAngle, 65, 0);
         } else {
              beamStart = getOffsetPoint(player.position, player.turretAngle, 30, 0);
@@ -791,15 +1046,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const dy = mouse.y - beamStart.y;
         
         const overdriveActive = g.abilities.find(a => a.id === 'overdrive')?.state === 'active';
-        const isRailgun = g.abilities.find(a => a.id === 'railgun')?.state === 'active';
         
         let damageMultiplier = overdriveActive ? 2.5 : 1.0;
-        if (isRailgun) damageMultiplier *= 3.0;
-        
-        const beamLen = isRailgun ? 1200 : Math.hypot(dx, dy);
+        if (player.chassis === 'goliath-prime-overdrive') damageMultiplier *= 1.5;
+
+        const beamLen = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        const endX = isRailgun ? beamStart.x + Math.cos(angle) * beamLen : mouse.x;
-        const endY = isRailgun ? beamStart.y + Math.sin(angle) * beamLen : mouse.y;
+        const endX = mouse.x;
+        const endY = mouse.y;
 
         const checkHit = (target: TankType | Boss) => {
             if (!target || target.status !== 'active') return false;
@@ -816,7 +1070,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             const projX = beamStart.x + tClamped * (endX - beamStart.x);
             const projY = beamStart.y + tClamped * (endY - beamStart.y);
             const dist = Math.hypot(px - projX, py - projY);
-            return dist < radius + (isRailgun ? 25 : 15);
+            return dist < radius + 15;
         };
 
         let hit = false;
@@ -922,11 +1176,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         while (angleDiff <= -180) angleDiff += 360;
         while (angleDiff > 180) angleDiff -= 360;
         boss.angle += angleDiff * 0.05 * timeScale;
-        if (boss.attackState.currentAttack !== 'laserSweep' && boss.attackState.currentAttack !== 'railgun') {
+        if (boss.attackState.currentAttack !== 'laserSweep' && boss.attackState.currentAttack !== 'omniBarrage') {
              boss.turretAngle = boss.angle; 
         }
 
-        const isStationaryAttack = boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'shockwave' || boss.attackState.currentAttack === 'railgun' || boss.attackState.phase === 'telegraphing';
+        const isStationaryAttack = boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'shockwave' || boss.attackState.currentAttack === 'omniBarrage' || boss.attackState.phase === 'telegraphing';
         
         if (!isStationaryAttack) {
             const speed = 1.0 * timeScale * diffConfig.speedMultiplier;
@@ -942,7 +1196,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             } else { boss.velocity = {x:0, y:0}; }
         } else { boss.velocity = {x: 0, y: 0}; }
 
-        const isChanneling = boss.attackState.phase === 'attacking' && (boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'railgun');
+        const isChanneling = boss.attackState.phase === 'attacking' && (boss.attackState.currentAttack === 'laserSweep');
         
         if (!isChanneling && (!boss.lastFireTime || now - boss.lastFireTime > 600 * diffConfig.fireRateMultiplier)) {
             const angle = boss.turretAngle;
@@ -958,18 +1212,19 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             const rand = Math.random();
             let nextAttack: typeof currentAttack = 'mortarVolley';
             if (dist < 200) { if (rand < 0.7) nextAttack = 'shockwave'; else nextAttack = 'mortarVolley'; }
-            else if (dist > 550) { if (rand < 0.5) nextAttack = 'railgun'; else if (rand < 0.8) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; } 
+            else if (dist > 550) { if (rand < 0.5) nextAttack = 'omniBarrage'; else if (rand < 0.8) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; } 
             else { if (rand < 0.3) nextAttack = 'mortarVolley'; else if (rand < 0.6) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; }
 
             const targetPos = { ...player.position }; 
             const teleDur = (dur: number) => dur / diffConfig.bossAggression;
 
             if (nextAttack === 'shockwave') {
-                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1000), attackDuration: 500 } };
-                audio.play('bossCharge', boss.position.x);
-            } else if (nextAttack === 'railgun') {
-                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1500), attackDuration: 500, targetPosition: targetPos } };
-                audio.play('bossRailgunCharge', boss.position.x);
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1500), attackDuration: 500 } };
+                // Using new charge sound
+                audio.play('bossShockwaveCharge', boss.position.x);
+            } else if (nextAttack === 'omniBarrage') {
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(2000), attackDuration: 200 } }; // Replaced Railgun logic
+                audio.start('omniCharge'); // New sound
             } else if (nextAttack === 'laserSweep') {
                 boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1000), attackDuration: 8500, sweepAngleStart: boss.angle, sweepAngleEnd: boss.angle + 360 } };
                 audio.play('bossCharge', boss.position.x);
@@ -1000,12 +1255,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         } 
         else if (phase === 'telegraphing') {
             const dur = attackData?.telegraphDuration || 1500; const elapsed = now - phaseStartTime; const progress = elapsed / dur;
-            if (currentAttack === 'railgun') {
-                if (progress < 0.8) {
-                    const dx = player.position.x - boss.position.x; const dy = player.position.y - boss.position.y;
-                    const angle = Math.atan2(dy, dx) * (180/Math.PI); boss.turretAngle = angle;
-                    if (attackData) attackData.targetPosition = { ...player.position };
-                }
+            if (currentAttack === 'omniBarrage') {
+                // Spin visual during charge?
+                boss.turretAngle += 10 * timeScale;
             } else if (currentAttack === 'laserSweep') {
                 const angleToPlayer = Math.atan2(player.position.y - boss.position.y, player.position.x - boss.position.x) * (180/Math.PI);
                 let angleDiff = angleToPlayer - boss.angle; while (angleDiff <= -180) angleDiff += 360; while (angleDiff > 180) angleDiff -= 360;
@@ -1015,41 +1267,81 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (now > phaseStartTime + dur) {
                 boss.attackState.phase = 'attacking'; boss.attackState.phaseStartTime = now;
                 if (currentAttack === 'shockwave') {
-                    audio.play('bossShockwave', boss.position.x); game.current.screenShake = 30;
-                    game.current.animations.push({ id: `shock-${now}`, type: 'shockwave', position: boss.position, createdAt: now, duration: 600, width: 200 });
+                    // NEW: Better Impact Audio & Effects
+                    audio.play('bossShockwaveFire', boss.position.x); 
+                    game.current.screenShake = 45; // Increased shake
+                    game.current.animations.push({ id: `shock-${now}`, type: 'shockwave', position: boss.position, createdAt: now, duration: 800, width: 250 });
+                    
                     const pDist = Math.hypot(player.position.x - boss.position.x, player.position.y - boss.position.y);
-                    if (pDist < 200) {
-                        player.health -= 3; setUiState(prev => ({...prev, playerHealth: player.health}));
+                    if (pDist < 250) {
+                        player.health -= 3; 
+                        setUiState(prev => ({...prev, playerHealth: player.health}));
                         game.current.damageNumbers.push({id: `dmg-shock-${now}`, text: '3', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
+                        
+                        // Enhanced Knockback
                         const pushAngle = Math.atan2(player.position.y - boss.position.y, player.position.x - boss.position.x);
-                        player.position.x += Math.cos(pushAngle) * 150; player.position.y += Math.sin(pushAngle) * 150;
+                        player.position.x += Math.cos(pushAngle) * 250; 
+                        player.position.y += Math.sin(pushAngle) * 250;
                     }
                     setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
-                } else if (currentAttack === 'railgun') {
-                    audio.play('bossRailgunFire', boss.position.x); game.current.screenShake = 20;
-                    const target = attackData?.targetPosition || player.position;
-                    const firePos = getOffsetPoint(boss.position, boss.turretAngle, 65, 0);
-                    game.current.animations.push({ id: `rail-${now}`, type: 'railgunBeam', position: firePos, targetPosition: target, createdAt: now, duration: 300 });
+                } else if (currentAttack === 'omniBarrage') {
+                    // Execute Omni Barrage
+                    audio.stop('omniCharge');
+                    audio.play('omniFire', boss.position.x);
+                    game.current.screenShake = 30;
                     
-                    const p = player.position; const a = firePos; const b = target;
-                    const AB = Math.hypot(b.x - a.x, b.y - a.y);
-                    const t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (AB * AB);
-                    const tClamped = Math.max(0, Math.min(1, t));
-                    const projX = a.x + tClamped * (b.x - a.x);
-                    const projY = a.y + tClamped * (b.y - a.y);
-                    const distToImpact = Math.hypot(p.x - projX, p.y - projY);
+                    const projectileCount = 48; // High density
+                    const speed = 8;
                     
-                    if (distToImpact < 40) {
-                         player.health -= 4; setUiState(prev => ({...prev, playerHealth: player.health}));
-                         game.current.damageNumbers.push({id: `dmg-rail-${now}`, text: '4', position: {...player.position}, createdAt: now, duration: 1000, color: '#f00'});
-                         audio.play('hit');
+                    for(let i=0; i<projectileCount; i++) {
+                         const angle = (360 / projectileCount) * i;
+                         const rad = angle * (Math.PI/180);
+                         const offset = getOffsetPoint(boss.position, angle, 40, 0);
+                         
+                         game.current.projectiles.push({
+                            id: `omni-p-${now}-${i}`, 
+                            ownerId: boss.id, 
+                            position: offset, 
+                            angle: angle, 
+                            velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, 
+                            size: { width: 12, height: 6 }, 
+                            damage: 2, 
+                            color: '#ef4444', 
+                            createdAt: now
+                        });
                     }
-                     setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
+
+                    // Secondary slower wave
+                    setTimeout(() => {
+                        if (!game.current.boss) return;
+                        for(let i=0; i<projectileCount; i++) {
+                             const angle = (360 / projectileCount) * i + (180/projectileCount); // Offset angle
+                             const rad = angle * (Math.PI/180);
+                             const offset = getOffsetPoint(boss.position, angle, 40, 0);
+                             
+                             game.current.projectiles.push({
+                                id: `omni-p2-${now}-${i}`, 
+                                ownerId: boss.id, 
+                                position: offset, 
+                                angle: angle, 
+                                velocity: { x: Math.cos(rad) * (speed * 0.6), y: Math.sin(rad) * (speed * 0.6) }, 
+                                size: { width: 10, height: 10 }, // Orbs
+                                damage: 2, 
+                                color: '#ef4444', 
+                                createdAt: Date.now()
+                            });
+                        }
+                    }, 200);
+
+                    setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
                 } else if (currentAttack === 'mortarVolley') {
                     const ids = attackData?.telegraphIds || []; const activeTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
                     audio.play('bossMortarFire', boss.position.x); game.current.screenShake = Math.max(game.current.screenShake, 15);
-                    activeTelegraphs.forEach(tele => {
-                        game.current.animations.push({ id: `expl-${now}-${tele.id}`, type: 'mortarStrike', position: tele.position, createdAt: now, duration: 800 });
+                    activeTelegraphs.forEach((tele, i) => {
+                         // Staggered explosions visually
+                         setTimeout(() => {
+                            game.current.animations.push({ id: `expl-${now}-${tele.id}`, type: 'mortarStrike', position: tele.position, createdAt: now + i*50, duration: 800 });
+                         }, i*30);
                         if (Math.hypot(player.position.x - tele.position.x, player.position.y - tele.position.y) < 80) {
                             player.health -= 3; player.lastHitTime = now; game.current.screenShake += 5; audio.play('hit');
                             setUiState(prev => ({...prev, playerHealth: player.health}));
@@ -1279,7 +1571,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
              if (game.current.player.activePowerUp === 'dualCannon') {
                  color = '#f97316'; damage += 1;
              }
-             if (game.current.player.bossType === 'goliath') {
+             if (game.current.player.bossType === 'goliath' || game.current.player.chassis === 'goliath-prime-overdrive') {
                  damage = 4; color = '#ef4444'; speed *= 1.1;
              }
         } else if (ownerId === 'boss') {
@@ -1293,7 +1585,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         });
         
         if (ownerId === 'player') {
-            if (game.current.player.activePowerUp === 'dualCannon' || game.current.player.bossType === 'goliath') audio.play('dualCannon', position.x);
+            if (game.current.player.activePowerUp === 'dualCannon' || game.current.player.bossType === 'goliath' || game.current.player.chassis === 'goliath-prime-overdrive') audio.play('dualCannon', position.x);
             else audio.play(`shot_${Math.floor(Math.random() * 5) + 1}`, position.x);
         } else {
             audio.play('shot_5', position.x);
@@ -1301,10 +1593,33 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     };
 
     const fireProjectile = (owner: TankType, angle: number) => {
-        const isGoliath = owner.bossType === 'goliath' && owner.type === 'player';
+        const isGoliath = (owner.bossType === 'goliath' && owner.type === 'player') || owner.chassis === 'goliath-prime' || owner.chassis === 'goliath-prime-overdrive';
+        const isTrueForm = owner.chassis === 'goliath-prime-overdrive';
+
+        // Automatic Homing Missiles Trigger (works for player and enemies)
+        if (owner.activePowerUp === 'homingMissiles' && (owner.homingMissileCount || 0) > 0) {
+             fireMissile(owner.id, false); 
+             owner.homingMissileCount = (owner.homingMissileCount || 0) - 1;
+             // Don't consume primary fire, allow simultaneous firing
+        }
+
         if (isGoliath) {
+            // Inner Barrels (Standard)
             fireProjectileAt(getOffsetPoint(owner.position, angle, 65, 12), angle, owner.id);
             fireProjectileAt(getOffsetPoint(owner.position, angle, 65, -12), angle, owner.id);
+            
+            // Outer Barrels (Dual Cannon Powerup -> Quad Cannon OR Overdrive Mode)
+            if (owner.activePowerUp === 'dualCannon' || isTrueForm) {
+                // UNIQUE INTERACTION: True Form Dual Cannon Buff (Hex Cannon)
+                if (isTrueForm && owner.activePowerUp === 'dualCannon') {
+                    // Extra pair of shots for ultimate destruction
+                    fireProjectileAt(getOffsetPoint(owner.position, angle, 55, 36), angle, owner.id);
+                    fireProjectileAt(getOffsetPoint(owner.position, angle, 55, -36), angle, owner.id);
+                }
+                
+                fireProjectileAt(getOffsetPoint(owner.position, angle, 60, 24), angle, owner.id);
+                fireProjectileAt(getOffsetPoint(owner.position, angle, 60, -24), angle, owner.id);
+            }
         } else if (owner.activePowerUp === 'dualCannon') {
             fireProjectileAt(getOffsetPoint(owner.position, angle, 32, 6), angle, owner.id);
             fireProjectileAt(getOffsetPoint(owner.position, angle, 32, -6), angle, owner.id);
@@ -1335,9 +1650,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         game.current.enemies.push(enemy);
     };
 
-    const spawnDuelEnemy = (name: string, tier: 'basic' | 'intermediate' | undefined) => {
+    const spawnDuelEnemy = (name: string, tier: 'basic' | 'intermediate' | undefined, chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime') => {
         game.current.enemies.push({
-            id: `duel-enemy`, name: name, type: 'enemy', status: 'active', spawnTime: 0, position: { x: ARENA_WIDTH / 2, y: 150 }, velocity: {x:0,y:0}, angle: 90, turretAngle: 90, size: {width: 50, height: 50}, tier: tier, health: tier === 'intermediate' ? 300 : 150, maxHealth: tier === 'intermediate' ? 300 : 150, color: tier === 'intermediate' ? '#f97316' : '#FF003C', score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: 1, aiStateTimer: 0
+            id: `duel-enemy`, 
+            name: name, 
+            type: 'enemy', 
+            status: 'active', 
+            spawnTime: 0, 
+            position: { x: ARENA_WIDTH / 2, y: 150 }, 
+            velocity: {x:0,y:0}, 
+            angle: 90, 
+            turretAngle: 90, 
+            size: {width: 50, height: 50}, 
+            tier: tier, 
+            health: tier === 'intermediate' ? 300 : 150, 
+            maxHealth: tier === 'intermediate' ? 300 : 150, 
+            color: tier === 'intermediate' ? '#f97316' : '#FF003C', 
+            score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: 1, aiStateTimer: 0,
+            chassis: chassis // Apply visual chassis override
         });
     };
 
@@ -1355,13 +1685,49 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             game.current.keys[e.key.toLowerCase()] = true;
             if (game.current.player.status !== 'active') return;
 
+            // Cutscene Trigger for Goliath Prime in Sandbox
+            if (e.key.toLowerCase() === 'x' && 
+                config.mode === 'sandbox' && 
+                config.sandboxConfig?.characterId === 'goliath-prime' &&
+                !game.current.cutscene.active &&
+                game.current.player.chassis !== 'goliath-prime-overdrive') {
+                
+                // Requirement: 30% HP or lower
+                const hpPercent = game.current.player.health / game.current.player.maxHealth;
+                if (hpPercent > 0.3) {
+                    audio.play('uiBack'); // Error/Deny sound
+                    // Visual feedback
+                    game.current.damageNumbers.push({
+                        id: `limit-lock-${Date.now()}`,
+                        text: 'LIMITER LOCKED',
+                        position: { ...game.current.player.position, y: game.current.player.position.y - 60 },
+                        createdAt: Date.now(),
+                        duration: 1000,
+                        color: '#fbbf24'
+                    });
+                    return;
+                }
+                    
+                game.current.cutscene = {
+                    active: true,
+                    phase: 'intro',
+                    startTime: Date.now(),
+                    dialogueText: '',
+                    dialogueIndex: 0,
+                    targetCamera: { x: game.current.player.position.x, y: game.current.player.position.y, zoom: 2.0 }
+                };
+                return;
+            }
+
+            if (game.current.cutscene.active) return; // Block input during cutscene
+
             if (e.key.toLowerCase() === 'q') triggerAbility(game.current.abilities[0]?.id || 'overdrive');
             if (e.key.toLowerCase() === 'e') {
-                const ab = game.current.abilities.find(a => a.id === 'cyberBeam' || a.id === 'railgun');
+                const ab = game.current.abilities.find(a => a.id === 'cyberBeam' || a.id === 'omniBarrage');
                 if (ab && ab.state === 'ready') {
                     ab.state = 'charging';
                     ab.startTime = Date.now();
-                    audio.start(ab.id === 'railgun' ? 'bossRailgunCharge' : 'beamCharge');
+                    audio.start(ab.id === 'omniBarrage' ? 'omniCharge' : 'beamCharge'); // Trigger audio start
                     setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
                 }
             }
@@ -1375,19 +1741,57 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         const onKeyUp = (e: KeyboardEvent) => {
             game.current.keys[e.key.toLowerCase()] = false;
+            
+            if (game.current.cutscene.active) return;
+
             if (e.key.toLowerCase() === 'e') {
-                const ab = game.current.abilities.find(a => a.id === 'cyberBeam' || a.id === 'railgun');
+                const ab = game.current.abilities.find(a => a.id === 'cyberBeam' || a.id === 'omniBarrage');
                 if (ab && ab.state === 'charging') {
                     const elapsed = Date.now() - (ab.startTime || 0);
-                    const required = ab.chargeDuration || 1500;
-                    if (elapsed >= required) { 
+                    // Omni Barrage has minimum charge requirement of 200ms to fire weak shots
+                    const minReq = ab.id === 'omniBarrage' ? 200 : (ab.chargeDuration || 1500);
+                    
+                    if (elapsed >= minReq) { 
                         ab.state = 'active';
                         ab.startTime = Date.now();
-                        if (ab.id === 'railgun') {
-                             audio.stop('bossRailgunCharge');
-                             audio.play('bossRailgunFire', game.current.player.position.x);
-                             const firePos = game.current.player.bossType === 'goliath' ? getOffsetPoint(game.current.player.position, game.current.player.turretAngle, 65, 0) : game.current.player.position;
-                             game.current.animations.push({ id: `rail-${Date.now()}`, type: 'railgunBeam', position: firePos, targetPosition: game.current.mouse, createdAt: Date.now(), duration: 300 });
+                        
+                        if (ab.id === 'omniBarrage') {
+                             audio.stop('omniCharge');
+                             audio.play('omniFire', game.current.player.position.x);
+                             
+                             // Calculate projectiles based on charge duration
+                             const maxDuration = ab.chargeDuration || 1500;
+                             const chargeRatio = Math.min(1, elapsed / maxDuration);
+                             
+                             // True Form Buff: More projectiles, faster
+                             const isTrueForm = game.current.player.chassis === 'goliath-prime-overdrive';
+                             const baseCount = isTrueForm ? 36 : 12; // Start higher
+                             const maxCount = isTrueForm ? 64 : 32; // End higher
+                             
+                             const count = Math.floor(baseCount + (chargeRatio * (maxCount - baseCount)));
+                             const speed = (7 + (chargeRatio * 5)) * (isTrueForm ? 1.2 : 1.0);
+                             const spreadDamage = (2 + (chargeRatio * 2)) * (isTrueForm ? 1.5 : 1.0);
+                             
+                             game.current.screenShake = (15 + (chargeRatio * 20)) * (isTrueForm ? 1.5 : 1.0);
+
+                             for(let i=0; i<count; i++) {
+                                 const angle = (360/count) * i + game.current.player.turretAngle; // Spin with turret
+                                 const rad = angle * (Math.PI/180);
+                                 const offset = getOffsetPoint(game.current.player.position, angle, 40, 0);
+                                 
+                                 game.current.projectiles.push({
+                                    id: `omni-p-${Date.now()}-${i}`, 
+                                    ownerId: 'player', 
+                                    position: offset, 
+                                    angle: angle, 
+                                    velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, 
+                                    size: { width: 10, height: 6 }, 
+                                    damage: spreadDamage, 
+                                    color: isTrueForm ? '#fbbf24' : game.current.player.color, // Gold in True Form 
+                                    createdAt: Date.now()
+                                });
+                             }
+                             // Short cooldown for visual active state
                              ab.duration = 200; 
                         } else {
                              audio.stop('beamCharge');
@@ -1395,7 +1799,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         }
                     } else {
                         ab.state = 'ready';
-                        audio.stop(ab.id === 'railgun' ? 'bossRailgunCharge' : 'beamCharge');
+                        audio.stop(ab.id === 'omniBarrage' ? 'omniCharge' : 'beamCharge');
                     }
                     setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
                 }
@@ -1404,9 +1808,37 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const onMouseMove = (e: MouseEvent) => {
             const rect = canvasRef.current?.getBoundingClientRect();
             if (rect) {
+                // Adjust mouse pos for canvas scaling due to camera/cutscene
+                // NOTE: Camera transform complicates mouse mapping.
+                // Current logic maps screen pixels to canvas 0-1000 coords.
+                // If we implement camera, we need inverse transform here.
+                // Simplified: Camera is center-focused.
+                
                 const scaleX = canvasRef.current!.width / rect.width;
                 const scaleY = canvasRef.current!.height / rect.height;
-                game.current.mouse = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+                const canvasX = (e.clientX - rect.left) * scaleX;
+                const canvasY = (e.clientY - rect.top) * scaleY;
+                
+                const g = game.current;
+                
+                if (g.cutscene.active || g.camera.zoom !== 1) {
+                    const cx = ARENA_WIDTH / 2;
+                    const cy = ARENA_HEIGHT / 2;
+                    // Apply inverse camera
+                    const zoom = g.camera.zoom;
+                    const tx = g.camera.x;
+                    const ty = g.camera.y;
+                    
+                    // Transform: Translate(cx,cy) -> Scale(z) -> Translate(-tx,-ty)
+                    // Inverse: Translate(tx,ty) -> Scale(1/z) -> Translate(-cx,-cy)
+                    
+                    const worldX = (canvasX - cx) / zoom + tx;
+                    const worldY = (canvasY - cy) / zoom + ty;
+                    
+                    g.mouse = { x: worldX, y: worldY };
+                } else {
+                    g.mouse = { x: canvasX, y: canvasY };
+                }
             }
         };
         const onMouseDown = () => {}
@@ -1425,14 +1857,33 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     const triggerAbility = (id: string) => {
         const ab = game.current.abilities.find(a => a.id === id);
+        const isTrueForm = game.current.player.chassis === 'goliath-prime-overdrive';
+
         if (ab && ab.state === 'ready') {
             ab.state = 'active';
             ab.startTime = Date.now();
             ab.firedCount = 0; 
             
             if (id === 'shockwave') {
-                audio.play('bossShockwave');
+                // Using new Sound
+                audio.play('bossShockwaveFire');
                 game.current.screenShake = 30;
+                
+                // TRUE FORM COMBO: Hellfire Stomp
+                if (isTrueForm) {
+                    game.current.screenShake = 50;
+                    // Spawn Persistent Fissure
+                    game.current.effectZones.push({
+                        id: `fissure-${Date.now()}`,
+                        type: 'fissure',
+                        position: { ...game.current.player.position },
+                        radius: 300,
+                        createdAt: Date.now(),
+                        duration: 5000,
+                        lastTick: 0
+                    });
+                }
+
                 game.current.animations.push({ id: `shock-${Date.now()}`, type: 'shockwave', position: game.current.player.position, createdAt: Date.now(), duration: 600, width: 250 });
                 game.current.enemies.forEach(e => {
                     if (Math.hypot(e.position.x - game.current.player.position.x, e.position.y - game.current.player.position.y) < 250) {
@@ -1446,22 +1897,47 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             } else if (id === 'mortarVolley') {
                 audio.play('bossMortarFire');
                 const offsets = [{x:0, y:0}, {x: 40, y: 30}, {x: -40, y: 30}, {x: 40, y: -30}, {x: -40, y: -30}];
-                offsets.forEach((off, i) => {
-                    const targetPos = { x: game.current.mouse.x + off.x, y: game.current.mouse.y + off.y };
-                    setTimeout(() => {
-                        game.current.animations.push({ id: `mortar-${Date.now()}-${i}`, type: 'mortarStrike', position: targetPos, createdAt: Date.now(), duration: 800 });
-                        setTimeout(() => {
-                            if (i === 0) { game.current.screenShake = 15; audio.play('rocketExplosion'); }
+                
+                // TRUE FORM COMBO: Orbital Saturation
+                if (isTrueForm) {
+                    // Instant Orbital Beams instead of shells
+                    offsets.forEach((off, i) => {
+                        const targetPos = { x: game.current.mouse.x + off.x * 1.5, y: game.current.mouse.y + off.y * 1.5 }; // Wider spread
+                         setTimeout(() => {
+                             // Instant Damage
+                             audio.play('shot_5'); // Placeholder beam sound
+                             game.current.animations.push({ id: `orbital-${Date.now()}-${i}`, type: 'orbitalBeam', position: targetPos, createdAt: Date.now(), duration: 800 });
+                             game.current.screenShake = 5;
+                             
                              game.current.enemies.forEach(e => {
-                                if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 80) {
-                                    e.health -= 10;
-                                    game.current.damageNumbers.push({id: `mt-${Date.now()}-${e.id}-${i}`, text: '10', position: e.position, createdAt: Date.now(), duration: 1000, color: '#f00'});
+                                if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 100) {
+                                    e.health -= 25; // Massive damage
+                                    e.lastHitTime = Date.now();
+                                    game.current.damageNumbers.push({id: `orb-${Date.now()}-${e.id}-${i}`, text: '25', position: e.position, createdAt: Date.now(), duration: 1000, color: '#fbbf24'});
                                     if (e.health <= 0) handleEnemyDeath(e);
                                 }
                             });
-                        }, 400); 
-                    }, i * 50);
-                });
+                         }, i * 100);
+                    });
+                } else {
+                    // Standard Mortar
+                    offsets.forEach((off, i) => {
+                        const targetPos = { x: game.current.mouse.x + off.x, y: game.current.mouse.y + off.y };
+                        setTimeout(() => {
+                            game.current.animations.push({ id: `mortar-${Date.now()}-${i}`, type: 'mortarStrike', position: targetPos, createdAt: Date.now(), duration: 800 });
+                            setTimeout(() => {
+                                if (i === 0) { game.current.screenShake = 15; audio.play('rocketExplosion'); }
+                                 game.current.enemies.forEach(e => {
+                                    if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 80) {
+                                        e.health -= 10;
+                                        game.current.damageNumbers.push({id: `mt-${Date.now()}-${e.id}-${i}`, text: '10', position: e.position, createdAt: Date.now(), duration: 1000, color: '#f00'});
+                                        if (e.health <= 0) handleEnemyDeath(e);
+                                    }
+                                });
+                            }, 400); 
+                        }, i * 50);
+                    });
+                }
 
             } else if (id === 'laserSweep') {
                 audio.play('bossLaserStart'); 
@@ -1511,6 +1987,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const g = game.current;
         const now = Date.now();
 
+        // CAMERA TRANSFORM
+        ctx.save();
+        
         let shakeX = 0, shakeY = 0;
         if (g.screenShake > 0) {
             if (settings.screenShake) {
@@ -1521,8 +2000,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (g.screenShake < 0.5) g.screenShake = 0;
         }
 
-        const isShaking = shakeX !== 0 || shakeY !== 0;
-        if (isShaking) { ctx.save(); ctx.translate(shakeX, shakeY); }
+        // Center Camera logic
+        const cx = ARENA_WIDTH / 2;
+        const cy = ARENA_HEIGHT / 2;
+        
+        ctx.translate(cx, cy);
+        ctx.scale(g.camera.zoom, g.camera.zoom);
+        ctx.translate(-g.camera.x + shakeX, -g.camera.y + shakeY);
+
 
         drawGrid(ctx, ARENA_WIDTH, ARENA_HEIGHT, 50);
         drawEffectZones(ctx, g.effectZones, now);
@@ -1539,15 +2024,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             drawCyberBeam(ctx, g.player, g.mouse, now, beamAbility.state, beamAbility.startTime || 0, beamAbility.chargeDuration, overdriveActive);
         }
         
-        const railAbility = g.abilities.find(a => a.id === 'railgun');
-        if (railAbility && (railAbility.state === 'charging')) {
-             drawCyberBeam(ctx, g.player, g.mouse, now, 'charging', railAbility.startTime || 0, railAbility.chargeDuration, true);
-        }
-
         const sweepAbility = g.abilities.find(a => a.id === 'laserSweep' && a.state === 'active');
         if (sweepAbility) {
-            const firePos = g.player.bossType === 'goliath' ? getOffsetPoint(g.player.position, g.player.turretAngle, 65, 0) : g.player.position;
-            drawLaserSweep(ctx, firePos, g.player.turretAngle, '#ef4444');
+            const isTrueForm = g.player.chassis === 'goliath-prime-overdrive';
+            const tipOffset = (g.player.bossType === 'goliath' || isTrueForm) ? 65 : 30;
+            
+            // Draw Main Beam
+            const firePos = getOffsetPoint(g.player.position, g.player.turretAngle, tipOffset, 0);
+            drawLaserSweep(ctx, firePos, g.player.turretAngle, isTrueForm ? '#fbbf24' : '#ef4444');
+            
+            // Draw X-Pattern beams if True Form
+            if (isTrueForm) {
+                // We draw 3 additional beams at 90 deg offsets to make the X (plus the main one)
+                for(let i=1; i<4; i++) {
+                    const angle = g.player.turretAngle + (i * 90);
+                    const pos = getOffsetPoint(g.player.position, angle, tipOffset, 0);
+                    drawLaserSweep(ctx, pos, angle, '#fbbf24');
+                }
+            }
         }
 
         g.projectiles.forEach(p => drawProjectile(ctx, p, undefined, false));
@@ -1555,20 +2049,38 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         drawAnimations(ctx, g.animations, now);
         drawDamageNumbers(ctx, g.damageNumbers, now);
 
-        if (isShaking) ctx.restore();
+        // Restore camera
+        ctx.restore();
+        
+        // UI Overlay for Cutscene
+        if (g.cutscene.active) {
+            drawCutsceneOverlay(ctx, ARENA_WIDTH, ARENA_HEIGHT, g.cutscene);
+        }
     };
 
     return (
         <div className="relative w-full h-screen bg-[#111] overflow-hidden flex items-center justify-center cursor-none">
             <canvas ref={canvasRef} width={ARENA_WIDTH} height={ARENA_HEIGHT} className="bg-[#1a1a1a] shadow-2xl shadow-black border border-[#333]" />
-            <HUD enemiesRemaining={uiState.enemiesRemaining} />
-            <div className="absolute top-4 right-4 z-20">
-                <Leaderboard player={{...game.current.player, score: uiState.playerScore}} enemies={game.current.enemies} boss={game.current.boss} />
-            </div>
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 h-[75%] w-80 z-20 pointer-events-none">
-                <AbilityHotbar abilities={uiState.abilities.length ? uiState.abilities : game.current.abilities} damageConverterCharge={uiState.damageConverterCharge} /> 
-            </div>
-            {game.current.boss && <BossHealthBar boss={game.current.boss} />}
+            {!game.current.cutscene.active && (
+                <>
+                    <HUD enemiesRemaining={uiState.enemiesRemaining} />
+                    <div className="absolute top-4 right-4 z-20">
+                        <Leaderboard player={{...game.current.player, score: uiState.playerScore}} enemies={game.current.enemies} boss={game.current.boss} />
+                    </div>
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 h-[75%] w-80 z-20 pointer-events-none">
+                        <AbilityHotbar abilities={uiState.abilities.length ? uiState.abilities : game.current.abilities} damageConverterCharge={uiState.damageConverterCharge} /> 
+                    </div>
+                    {game.current.boss && <BossHealthBar boss={game.current.boss} />}
+                </>
+            )}
+            
+            {/* Cutscene Prompt for Sandbox Goliath - Shows only when HP <= 30% */}
+            {!game.current.cutscene.active && config.mode === 'sandbox' && config.sandboxConfig?.characterId === 'goliath-prime' && game.current.player.chassis !== 'goliath-prime-overdrive' && (game.current.player.health / game.current.player.maxHealth <= 0.3) && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 text-center pointer-events-none animate-pulse z-20">
+                    <p className="text-yellow-400 font-orbitron font-bold text-sm tracking-widest bg-black/50 px-4 py-1 rounded border border-yellow-500/50 shadow-[0_0_10px_#eab308]">⚠ LIMITER DISENGAGED: PRESS [X] ⚠</p>
+                </div>
+            )}
+
             {uiState.gameOver && (
                 <GameOverScreen score={uiState.playerScore} kills={uiState.playerKills} onRestart={() => navigateTo('game')} onMainMenu={() => navigateTo('main-menu')} />
             )}
@@ -1578,61 +2090,93 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
 export default GameScreen;
 
-function updateEnemyAI(e: TankType, player: TankType, now: number, timeScale: number, diffConfig: any, onFire: () => void): void {
+function updateEnemyAI(e: TankType, player: TankType, powerUps: PowerUp[], now: number, timeScale: number, diffConfig: any, onFire: () => void): void {
     if (e.status !== 'active' || player.status !== 'active') return;
 
-    const dist = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
+    const distToPlayer = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
     const angleToPlayer = Math.atan2(player.position.y - e.position.y, player.position.x - e.position.x) * (180/Math.PI);
     
+    // Turret tracks player always
     let angleDiff = angleToPlayer - e.turretAngle;
     while (angleDiff <= -180) angleDiff += 360;
     while (angleDiff > 180) angleDiff -= 360;
     e.turretAngle += angleDiff * (0.1 + diffConfig.aiTracking) * timeScale;
     
+    // Power-up Detection
+    let targetPos = player.position;
+    let isScavenging = false;
+    
+    // Only seek powerups if we don't have one
+    if (!e.activePowerUp) {
+        let minDist = 400; // Detection range
+        for (const p of powerUps) {
+            const d = Math.hypot(p.position.x - e.position.x, p.position.y - e.position.y);
+            if (d < minDist) {
+                minDist = d;
+                targetPos = p.position;
+                isScavenging = true;
+            }
+        }
+    }
+
     if (now > (e.aiStateTimer || 0)) {
         e.aiStateTimer = now + 1000 + Math.random() * 2000;
         const rand = Math.random();
-        if (dist > 400) e.aiMode = 'engage';
-        else if (dist < 150) e.aiMode = 'flank';
+        if (distToPlayer > 400) e.aiMode = 'engage';
+        else if (distToPlayer < 150) e.aiMode = 'flank';
         else e.aiMode = rand > 0.6 ? 'strafe' : 'engage';
         if (e.aiMode === 'strafe') e.aiStrafeDir = Math.random() > 0.5 ? 1 : -1;
     }
 
     const speed = (e.tier === 'intermediate' ? 1.5 : 2.0) * diffConfig.speedMultiplier * timeScale;
-    let moveAngle = e.angle;
     let shouldMove = false;
+    let targetMoveAngle = e.angle;
 
-    if (e.aiMode === 'engage') {
-         if (dist > 250) { moveAngle = angleToPlayer; shouldMove = true; }
-         else if (dist < 100) { moveAngle = angleToPlayer + 180; shouldMove = true; }
-    } else if (e.aiMode === 'strafe') {
-        moveAngle = angleToPlayer + 90 * (e.aiStrafeDir || 1); shouldMove = true;
-    } else if (e.aiMode === 'flank') {
-        moveAngle = angleToPlayer + 180 + (Math.random() - 0.5) * 60; shouldMove = true;
+    if (isScavenging) {
+        shouldMove = true;
+        targetMoveAngle = Math.atan2(targetPos.y - e.position.y, targetPos.x - e.position.x) * (180 / Math.PI);
+    } else {
+        if (e.aiMode === 'engage') {
+            if (distToPlayer > 200) {
+                shouldMove = true;
+                targetMoveAngle = angleToPlayer;
+            }
+        } else if (e.aiMode === 'strafe') {
+            shouldMove = true;
+            targetMoveAngle = angleToPlayer + 90 * (e.aiStrafeDir || 1);
+        } else if (e.aiMode === 'flank') {
+            shouldMove = true;
+            targetMoveAngle = angleToPlayer + 180 + (Math.random() * 60 - 30);
+        }
     }
 
     if (shouldMove) {
-        let bodyDiff = moveAngle - e.angle;
-        while (bodyDiff <= -180) bodyDiff += 360;
-        while (bodyDiff > 180) bodyDiff -= 360;
-        e.angle += bodyDiff * 0.05 * timeScale;
-
-        const rad = e.angle * (Math.PI/180);
+        let diff = targetMoveAngle - e.angle;
+        while (diff <= -180) diff += 360;
+        while (diff > 180) diff -= 360;
+        e.angle += diff * 0.1 * timeScale; // Smooth turn
+        
+        const rad = e.angle * (Math.PI / 180);
         const vx = Math.cos(rad) * speed;
         const vy = Math.sin(rad) * speed;
-        e.position.x += vx; e.position.y += vy;
+        
+        e.position.x += vx;
+        e.position.y += vy;
         e.velocity = {x: vx, y: vy};
-        e.position.x = Math.max(40, Math.min(ARENA_WIDTH-40, e.position.x));
-        e.position.y = Math.max(40, Math.min(ARENA_HEIGHT-40, e.position.y));
+        
+        // Bounds check
+        e.position.x = Math.max(30, Math.min(ARENA_WIDTH - 30, e.position.x));
+        e.position.y = Math.max(30, Math.min(ARENA_HEIGHT - 30, e.position.y));
     } else {
-        e.velocity = {x:0, y:0};
+        e.velocity = {x: 0, y: 0};
     }
 
-    const fireRate = (e.tier === 'intermediate' ? 1200 : 2000) * diffConfig.fireRateMultiplier;
-    if (now - (e.lastFireTime || 0) > fireRate) {
-        if (Math.abs(angleDiff) < 30 && dist < 600) {
-            e.lastFireTime = now;
+    // Fire logic
+    if (!e.lastFireTime || now - e.lastFireTime > (e.tier === 'intermediate' ? 1500 : 2500) * diffConfig.fireRateMultiplier) {
+        // Fire if aiming roughly at player
+        if (Math.abs(angleDiff) < 30 && distToPlayer < 700) {
             onFire();
+            e.lastFireTime = now;
         }
     }
 }

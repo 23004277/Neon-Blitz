@@ -79,9 +79,11 @@ const App: React.FC = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
       const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview', // Updated to use gemini-3-pro-preview
         contents: input,
         config: {
+          thinkingConfig: { thinkingBudget: 32768 }, // Added thinkingBudget
+          // Removed maxOutputTokens as instructed when using thinking mode
           systemInstruction: `You are **Commander Darlek**, a battle-hardened tactical AI integrated into the Vector Siege mainframe.
 Your mission: Ensure the Pilot (user) survives the neon onslaught.
 Your tone: Gritty, cynical, concise, and professional. Use cyberpunk military slang ("chrome", "cycles", "zeroed", "glitch", "meatbag").

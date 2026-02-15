@@ -115,9 +115,10 @@ const SandboxSelectionScreen: React.FC<SandboxSelectionScreenProps> = ({ navigat
         } else {
             const tank: Tank = {
                 id: 'preview', name: selectedChar.name, type: 'player',
+                chassis: selectedChar.id as any,
                 position: {x:0, y:0}, velocity: {x:0,y:0}, angle: rotation, turretAngle: rotation,
                 size: { width: 40, height: 40 }, health: 100, maxHealth: 100,
-                color: selectedChar.tier === 'intermediate' ? '#f97316' : (selectedChar.id === 'rogue-scout' ? '#00F0FF' : '#00F0FF'),
+                color: selectedChar.tier === 'intermediate' ? '#f97316' : (selectedChar.id === 'rogue-scout' ? '#FF003C' : '#00F0FF'),
                 tier: selectedChar.tier, score: 0, kills: 0, deaths: 0, status: 'active'
             };
             drawTank(ctx, tank, now, [], false);
@@ -187,7 +188,8 @@ const SandboxSelectionScreen: React.FC<SandboxSelectionScreenProps> = ({ navigat
                           type={isBoss ? 'boss' : 'player'} 
                           tier={char.tier}
                           bossType={char.bossType}
-                          color={isBoss ? '#ef4444' : char.tier === 'intermediate' ? '#f97316' : '#00F0FF'} 
+                          chassis={char.id}
+                          color={isBoss ? '#ef4444' : char.id === 'rogue-scout' ? '#FF003C' : char.tier === 'intermediate' ? '#f97316' : '#00F0FF'} 
                           className="w-6 h-6" 
                        />
                     </div>
