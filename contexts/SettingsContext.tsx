@@ -7,7 +7,7 @@ interface SettingsContextType {
   setSettings: React.Dispatch<React.SetStateAction<Settings>>;
 }
 
-const defaultSettings: Settings = {
+export const defaultSettings: Settings = {
   sound: true,
   music: true,
   soundVolume: 0.5,

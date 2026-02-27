@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useSettings } from './SettingsContext';
-import { Settings } from '../types';
+import { Settings, Vector } from '../types';
 
 // --- Types ---
 type MusicState = 'loading' | 'menu' | 'ambient' | 'combat' | 'boss';
@@ -213,6 +213,10 @@ export class AudioController {
   sfxGain: GainNode;
   reverb: ConvolverNode | null = null;
   reverbGain: GainNode;
+  
+  // New Nodes
+  compressor: DynamicsCompressorNode;
+  globalFilter: BiquadFilterNode;
 
   settings: Settings;
   noiseBuffer: AudioBuffer | null = null;
@@ -224,6 +228,10 @@ export class AudioController {
 
   scheduledNodes = new Set<AudioScheduledSourceNode>();
   activeLoops = new Map<string, { gain: GainNode, stop: (t: number) => void }>();
+  
+  // Concurrency & Debounce
+  activeSounds = new Map<string, number>();
+  lastPlayTime = new Map<string, number>();
   
   // Engine System
   activeEngines = new Map<string, { 
@@ -244,18 +252,43 @@ export class AudioController {
     this.musicGain = this.ctx.createGain();
     this.sfxGain = this.ctx.createGain();
     this.reverbGain = this.ctx.createGain();
+    
+    // Initialize Compressor
+    this.compressor = this.ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -24;
+    this.compressor.knee.value = 30;
+    this.compressor.ratio.value = 12;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.25;
 
+    // Initialize Global Filter (Lowpass for muffled effects)
+    this.globalFilter = this.ctx.createBiquadFilter();
+    this.globalFilter.type = 'lowpass';
+    this.globalFilter.frequency.value = 22000; // Open by default
+    this.globalFilter.Q.value = 0.5;
+
+    // Routing Chain:
+    // [Music/SFX/Reverb] -> GlobalFilter -> Compressor -> MasterGain -> Destination
+    
     this.masterGain.connect(this.ctx.destination);
-    this.musicGain.connect(this.masterGain);
+    this.compressor.connect(this.masterGain);
+    this.globalFilter.connect(this.compressor);
+
+    this.musicGain.connect(this.globalFilter);
+    this.sfxGain.connect(this.globalFilter);
+    
+    // Reverb Routing
     this.musicGain.connect(this.reverbGain);
-    this.reverbGain.connect(this.masterGain);
-    this.sfxGain.connect(this.masterGain);
+    // Send SFX to reverb lightly for space
+    const sfxReverbSend = this.ctx.createGain();
+    sfxReverbSend.gain.value = 0.1;
+    this.sfxGain.connect(sfxReverbSend).connect(this.reverbGain);
 
     this.reverb = this.createReverb(2.2, 2.0);
     if (this.reverb) {
       this.reverbGain.disconnect();
       this.reverbGain.connect(this.reverb);
-      this.reverb.connect(this.masterGain);
+      this.reverb.connect(this.globalFilter);
     }
 
     this.reverbGain.gain.value = 0.12;
@@ -326,7 +359,12 @@ export class AudioController {
   }
 
   // --- Spatial SFX ---
-  play(key: string, panX: number = 0) {
+  setGlobalFilter(freq: number) {
+      const t = this.ctx.currentTime;
+      this.globalFilter.frequency.setTargetAtTime(freq, t, 0.2);
+  }
+
+  play(key: string, location: number | Vector = 0, listener?: Vector) {
     if (!this.settings.sound) return;
     if (this.ctx.state === 'suspended') this.resume();
 
@@ -335,21 +373,55 @@ export class AudioController {
 
     const t = this.ctx.currentTime;
 
+    // --- Concurrency & Debounce ---
+    const lastTime = this.lastPlayTime.get(key) || 0;
+    if (t - lastTime < 0.04) return; // 40ms debounce
+    this.lastPlayTime.set(key, t);
+
+    const activeCount = this.activeSounds.get(key) || 0;
+    if (activeCount > 8) return; // Hard limit
+    this.activeSounds.set(key, activeCount + 1);
+    
+    // Cleanup count after duration
+    const maxDur = Math.max(...config.layers.map(l => l.duration));
+    setTimeout(() => {
+        const c = this.activeSounds.get(key) || 1;
+        this.activeSounds.set(key, Math.max(0, c - 1));
+    }, maxDur * 1000 + 100);
+
+    // --- Spatial Calculation ---
+    let panVal = 0;
+    let distGain = 1.0;
+
+    if (typeof location === 'number') {
+        // Legacy X-only panning
+        if (location !== 0) {
+            panVal = Math.max(-1, Math.min(1, (location - 500) / 500));
+        }
+    } else if (location && listener) {
+        const dx = location.x - listener.x;
+        const dy = location.y - listener.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        // Attenuation
+        const maxDist = 1200;
+        distGain = Math.max(0.0, 1 - (dist / maxDist));
+        distGain = distGain * distGain; // Quadratic falloff
+
+        panVal = Math.max(-1, Math.min(1, dx / 500));
+    }
+
     // RANDOMIZATION FACTORS
     // Slight random variances to make every sound unique
-    const speedVar = 0.9 + Math.random() * 0.2; // 0.9x to 1.1x speed
+    const speedVar = 0.95 + Math.random() * 0.1; // 0.95x to 1.05x speed
     const gainVar = 0.9 + Math.random() * 0.2;  // 0.9x to 1.1x volume
-    const detuneVar = (Math.random() - 0.5) * 300; // -150 to +150 cents pitch shift
+    const detuneVar = (Math.random() - 0.5) * 200; // -100 to +100 cents pitch shift
 
     config.layers.forEach((layer) => {
       const startTime = t + (layer.delay || 0) / speedVar;
       const duration = layer.duration / speedVar;
 
       const panner = this.ctx.createStereoPanner();
-      let panVal = 0;
-      if (panX !== 0) {
-        panVal = Math.max(-1, Math.min(1, (panX - 500) / 500));
-      }
       panner.pan.value = panVal;
       panner.connect(this.sfxGain);
 
@@ -405,7 +477,7 @@ export class AudioController {
       }
 
       gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(layer.gain * gainVar, startTime + 0.01);
+      gain.gain.linearRampToValueAtTime(layer.gain * gainVar * distGain, startTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
       gain.connect(panner);
@@ -1061,7 +1133,7 @@ export class AudioController {
   }
 }
 
-const AudioContext = createContext<AudioController | null>(null);
+export const AudioContext = createContext<AudioController | null>(null);
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { settings } = useSettings();

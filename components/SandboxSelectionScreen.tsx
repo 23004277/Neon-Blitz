@@ -18,6 +18,7 @@ interface CharacterOption {
     bossType?: 'goliath' | 'viper' | 'sentinel';
     tier?: 'basic' | 'intermediate';
     stats: { hp: number, speed: number, size: number };
+    color: string;
 }
 
 const characters: CharacterOption[] = [
@@ -27,7 +28,8 @@ const characters: CharacterOption[] = [
         description: 'Standard issue hover-tank. Balanced performance.',
         type: 'tank',
         tier: 'basic',
-        stats: { hp: 10, speed: 3.5, size: 40 }
+        stats: { hp: 10, speed: 3.5, size: 40 },
+        color: '#06b6d4'
     },
     {
         id: 'rogue-scout',
@@ -35,7 +37,8 @@ const characters: CharacterOption[] = [
         description: 'High mobility, low durability. Hit and run tactics.',
         type: 'tank',
         tier: 'basic',
-        stats: { hp: 5, speed: 5.0, size: 30 }
+        stats: { hp: 5, speed: 5.0, size: 30 },
+        color: '#22c55e'
     },
     {
         id: 'iron-bastion',
@@ -43,7 +46,8 @@ const characters: CharacterOption[] = [
         description: 'Heavy armor plating. Slower movement.',
         type: 'tank',
         tier: 'intermediate',
-        stats: { hp: 25, speed: 2.0, size: 50 }
+        stats: { hp: 25, speed: 2.0, size: 50 },
+        color: '#f97316'
     },
     {
         id: 'goliath-prime',
@@ -51,7 +55,53 @@ const characters: CharacterOption[] = [
         description: 'COMMANDER CLASS. Massive durability. Access to Boss Moveset.',
         type: 'boss',
         bossType: 'goliath',
-        stats: { hp: 200, speed: 1.5, size: 100 }
+        stats: { hp: 200, speed: 1.5, size: 100 },
+        color: '#ef4444'
+    },
+    {
+        id: 'phantom-weaver',
+        name: 'Phantom Weaver',
+        description: 'Stealth specialist. Can phase shift to avoid damage.',
+        type: 'tank',
+        tier: 'intermediate',
+        stats: { hp: 8, speed: 4.5, size: 35 },
+        color: '#a855f7'
+    },
+    {
+        id: 'titan-ogre',
+        name: 'Titan Ogre',
+        description: 'Super-heavy assault platform. Massive firepower.',
+        type: 'tank',
+        tier: 'intermediate',
+        stats: { hp: 40, speed: 1.5, size: 60 },
+        color: '#ea580c'
+    },
+    {
+        id: 'volt-strider',
+        name: 'Volt Strider',
+        description: 'Electric warfare unit. Chain lightning attacks.',
+        type: 'tank',
+        tier: 'intermediate',
+        stats: { hp: 12, speed: 4.0, size: 38 },
+        color: '#eab308'
+    },
+    {
+        id: 'inferno-cobra',
+        name: 'Inferno Cobra',
+        description: 'Flame-thrower equipped. Area denial specialist.',
+        type: 'tank',
+        tier: 'intermediate',
+        stats: { hp: 15, speed: 3.8, size: 42 },
+        color: '#ef4444'
+    },
+    {
+        id: 'crystal-vanguard',
+        name: 'Crystal Vanguard',
+        description: 'Beam weaponry and refractive shielding.',
+        type: 'tank',
+        tier: 'intermediate',
+        stats: { hp: 20, speed: 3.0, size: 45 },
+        color: '#06b6d4'
     }
 ];
 
@@ -189,7 +239,7 @@ const SandboxSelectionScreen: React.FC<SandboxSelectionScreenProps> = ({ navigat
                           tier={char.tier}
                           bossType={char.bossType}
                           chassis={char.id}
-                          color={isBoss ? '#ef4444' : char.id === 'rogue-scout' ? '#FF003C' : char.tier === 'intermediate' ? '#f97316' : '#00F0FF'} 
+                          color={char.color}
                           className="w-6 h-6" 
                        />
                     </div>

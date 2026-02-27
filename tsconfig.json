@@ -23,7 +23,15 @@
         "./*"
       ]
     },
+    "baseUrl": ".",
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

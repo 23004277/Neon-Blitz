@@ -1,5 +1,5 @@
 
-import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState } from '../../types';
+import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState, Barrel, ChassisType } from '../../types';
 
 export const degToRad = (d: number) => d * (Math.PI / 180);
 
@@ -527,6 +527,137 @@ export function drawLastStandWarning(ctx: CanvasRenderingContext2D, boss: Boss, 
     ctx.restore();
 }
 
+export function drawOverdriveAura(ctx: CanvasRenderingContext2D, chassis: ChassisType | undefined, now: number) {
+    ctx.save();
+    const flicker = Math.random() * 0.2 + 0.8;
+    const pulse = Math.sin(now * 0.01) * 0.1 + 0.9;
+
+    switch (chassis) {
+        case 'rogue-scout':
+            // Cyan Speed Aura
+            ctx.strokeStyle = `rgba(0, 240, 255, ${0.6 * flicker})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.lineDashOffset = -now * 0.1;
+            ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.stroke();
+            
+            ctx.strokeStyle = `rgba(0, 240, 255, ${0.3 * flicker})`;
+            ctx.setLineDash([5, 15]);
+            ctx.lineDashOffset = now * 0.05;
+            ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke();
+            break;
+
+        case 'iron-bastion':
+            // Orange Fortress Aura
+            ctx.strokeStyle = `rgba(249, 115, 22, ${0.7 * flicker})`;
+            ctx.lineWidth = 3;
+            const sides = 6;
+            ctx.beginPath();
+            for (let i = 0; i < sides; i++) {
+                const angle = (i / sides) * Math.PI * 2 + (now * 0.001);
+                const x = Math.cos(angle) * 45 * pulse;
+                const y = Math.sin(angle) * 45 * pulse;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fillStyle = `rgba(249, 115, 22, ${0.1 * flicker})`;
+            ctx.fill();
+            break;
+
+        case 'phantom-weaver':
+            // Purple Phase Aura
+            ctx.strokeStyle = `rgba(168, 85, 247, ${0.5 * flicker})`;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                const r = 30 + i * 8 + (now * 0.02 % 10);
+                const alpha = 0.5 * (1 - (r - 30) / 24);
+                ctx.strokeStyle = `rgba(168, 85, 247, ${alpha * flicker})`;
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+            }
+            break;
+
+        case 'titan-ogre':
+            // Green Regen Aura
+            ctx.fillStyle = `rgba(34, 197, 94, ${0.15 * flicker})`;
+            ctx.beginPath(); ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = `rgba(34, 197, 94, ${0.6 * flicker})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 8]);
+            ctx.beginPath(); ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2); ctx.stroke();
+            break;
+
+        case 'volt-strider':
+            // Yellow Electric Aura
+            ctx.strokeStyle = `rgba(234, 179, 8, ${0.8 * flicker})`;
+            ctx.lineWidth = 1.5;
+            if (Math.random() > 0.5) {
+                ctx.beginPath();
+                let lastX = 0, lastY = 0;
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const r = 30 + Math.random() * 15;
+                    const x = Math.cos(angle) * r;
+                    const y = Math.sin(angle) * r;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            break;
+
+        case 'inferno-cobra':
+            // Red Heat Aura
+            const gradient = ctx.createRadialGradient(0, 0, 20, 0, 0, 45);
+            gradient.addColorStop(0, `rgba(239, 68, 68, ${0.4 * flicker})`);
+            gradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI * 2); ctx.fill();
+            
+            // Flame particles
+            ctx.fillStyle = `rgba(249, 115, 22, ${0.8 * flicker})`;
+            for (let i = 0; i < 5; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const r = 25 + Math.random() * 15;
+                ctx.beginPath(); ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, 2, 0, Math.PI * 2); ctx.fill();
+            }
+            break;
+
+        case 'crystal-vanguard':
+            // Cyan Crystal Aura
+            ctx.strokeStyle = `rgba(6, 182, 212, ${0.7 * flicker})`;
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 4; i++) {
+                ctx.save();
+                ctx.rotate((now * 0.001) + (i * Math.PI / 2));
+                ctx.beginPath();
+                ctx.moveTo(35, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.lineTo(0, -10);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.restore();
+            }
+            break;
+
+        default:
+            // Vector-01 / Default Gold Aura
+            const gold = '#f59e0b';
+            const brightGold = '#fcd34d';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = brightGold;
+            ctx.fillStyle = `rgba(245, 158, 11, ${0.2 * pulse})`;
+            ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = `rgba(252, 211, 77, ${0.8 * pulse})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([15, 10]);
+            ctx.lineDashOffset = now * -0.05;
+            ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI * 2); ctx.stroke();
+            break;
+    }
+    ctx.restore();
+}
+
 export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number, abilities: Ability[], isTimeStopped: boolean) {
     if (tank.status === 'dead') return;
     
@@ -543,16 +674,17 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.translate(tank.position.x, tank.position.y);
         
         // --- POWER-UP AURAS (Before rotation) ---
-        if (tank.activePowerUp === 'lifeLeech' || tank.activePowerUp === 'regensule') {
+        if (tank.activePowerUps?.includes('lifeLeech') || tank.activePowerUps?.includes('regensule')) {
             ctx.save();
             const pulse = Math.sin(now * 0.005) * 0.2 + 0.5;
-            if (tank.activePowerUp === 'lifeLeech') {
+            if (tank.activePowerUps?.includes('lifeLeech')) {
                 ctx.strokeStyle = `rgba(239, 68, 68, ${pulse})`;
                 ctx.lineWidth = 3;
                 ctx.setLineDash([10, 10]);
                 ctx.rotate(now * 0.001);
                 ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI*2); ctx.stroke();
-            } else {
+            }
+            if (tank.activePowerUps?.includes('regensule')) {
                 ctx.fillStyle = `rgba(74, 222, 128, ${pulse * 0.3})`;
                 ctx.beginPath(); ctx.arc(0, 0, 65, 0, Math.PI*2); ctx.fill();
             }
@@ -566,7 +698,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
              const progress = Math.min(1, elapsed / (omni.chargeDuration || 1500));
              ctx.fillStyle = `rgba(255, 60, 60, ${progress * 0.5})`;
              ctx.beginPath();
-             ctx.arc(0, 0, 80 * progress, 0, Math.PI*2);
+             ctx.arc(0, 0, Math.max(0, 80 * progress), 0, Math.PI*2);
              ctx.fill();
              
              ctx.strokeStyle = `rgba(255, 60, 60, 0.8)`;
@@ -579,7 +711,8 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         }
         
         // Overdrive Aura (Standard)
-        if (isOverdrive) {
+        const overdriveAbility = abilities?.find(a => a.id === 'overdrive' && a.state === 'active');
+        if (isOverdrive || overdriveAbility) {
             const flicker = Math.random() * 0.2 + 0.8;
             
             // True Form Aura: More aggressive, multi-layered
@@ -664,7 +797,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.fillRect(10, 6, 55, 12);
         
         // --- DUAL CANNON POWER-UP (Quad Barrel) ---
-        if (tank.activePowerUp === 'dualCannon' || isOverdrive) {
+        if (tank.activePowerUps?.includes('dualCannon') || isOverdrive) {
             ctx.fillStyle = isHit ? '#fff' : '#1f2937';
             // Outer barrels
             ctx.fillRect(5, -30, 50, 10);
@@ -678,7 +811,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         }
         
         // --- MISSILE PODS POWER-UP ---
-        if (tank.activePowerUp === 'homingMissiles') {
+        if (tank.activePowerUps?.includes('homingMissiles')) {
             ctx.fillStyle = isHit ? '#fff' : '#333';
             ctx.fillRect(-25, -50, 20, 15);
             ctx.fillRect(-25, 35, 20, 15);
@@ -717,6 +850,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
              }
         }
 
+        // --- OVERDRIVE AURA (Goliath/True Form) ---
+        if (isOverdrive || overdriveAbility) {
+            drawOverdriveAura(ctx, tank.chassis, now);
+        }
+
         ctx.restore();
         return; // Skip standard tank drawing
     }
@@ -736,9 +874,9 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
     const cStroke = (col: string) => isHit ? '#ffffff' : col;
 
     // --- ENEMY POWER-UP AURAS ---
-    if (!isPlayer && tank.activePowerUp) {
+    if (!isPlayer && tank.activePowerUps && tank.activePowerUps.length > 0) {
         ctx.save();
-        if (tank.activePowerUp === 'lifeLeech') {
+        if (tank.activePowerUps.includes('lifeLeech')) {
             // Red vampiric aura
             const pulse = Math.sin(now * 0.005) * 0.2 + 0.5;
             ctx.strokeStyle = `rgba(239, 68, 68, ${pulse})`;
@@ -748,7 +886,8 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.beginPath();
             ctx.arc(0, 0, 30, 0, Math.PI*2);
             ctx.stroke();
-        } else if (tank.activePowerUp === 'regensule') {
+        }
+        if (tank.activePowerUps.includes('regensule')) {
             // Green healing aura
             const pulse = Math.sin(now * 0.003) * 0.2 + 0.4;
             ctx.fillStyle = `rgba(74, 222, 128, ${pulse * 0.3})`;
@@ -805,7 +944,186 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     ctx.rotate(degToRad(tank.angle));
 
-    if (tank.chassis === 'rogue-scout') {
+    // --- OVERDRIVE AURA (Standard Tanks) ---
+    const overdrive = abilities?.find(a => a.id === 'overdrive' && a.state === 'active');
+    if (overdrive) {
+        drawOverdriveAura(ctx, tank.chassis, now);
+    }
+
+    if (tank.chassis === 'phantom-weaver') {
+        // Phantom Weaver Visuals
+        const primary = tank.color || '#a855f7';
+        const dark = '#1c1917';
+        
+        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowBlur = isHit ? 20 : 15;
+        
+        ctx.fillStyle = cFill(dark);
+        ctx.strokeStyle = cStroke(primary);
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(-10, 12);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-10, -12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        if (!isHit) {
+            ctx.fillStyle = primary;
+            const float = Math.sin(now * 0.005) * 3;
+            ctx.fillRect(-18 + float, -15, 4, 4);
+            ctx.fillRect(-18 - float, 11, 4, 4);
+        }
+        
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        ctx.fillStyle = cFill('#334155');
+        ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = primary;
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI*2); ctx.fill();
+
+    } else if (tank.chassis === 'titan-ogre') {
+        // Titan Ogre Visuals
+        const primary = tank.color || '#166534';
+        const dark = '#020617';
+        
+        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowBlur = isHit ? 20 : 10;
+        
+        ctx.fillStyle = cFill(dark);
+        ctx.strokeStyle = cStroke(primary);
+        ctx.lineWidth = 3;
+        
+        ctx.beginPath();
+        ctx.rect(-25, -25, 50, 50);
+        ctx.fill();
+        ctx.stroke();
+        
+        if (!isHit) {
+            ctx.fillStyle = '#14532d';
+            ctx.fillRect(-20, -20, 15, 15);
+            ctx.fillRect(5, -20, 15, 15);
+            ctx.fillRect(-20, 5, 15, 15);
+            ctx.fillRect(5, 5, 15, 15);
+        }
+        
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        ctx.fillStyle = '#1c1917';
+        ctx.strokeStyle = primary;
+        ctx.fillRect(0, -8, 35, 16);
+        ctx.strokeRect(0, -8, 35, 16);
+
+    } else if (tank.chassis === 'volt-strider') {
+        // Volt Strider Visuals
+        const primary = tank.color || '#eab308';
+        const dark = '#1c1917';
+        
+        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowBlur = isHit ? 20 : 15;
+        
+        ctx.fillStyle = cFill(dark);
+        ctx.strokeStyle = cStroke(primary);
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(-10, 15);
+        ctx.lineTo(-5, 5);
+        ctx.lineTo(-20, 10);
+        ctx.lineTo(-10, 0);
+        ctx.lineTo(-20, -10);
+        ctx.lineTo(-5, -5);
+        ctx.lineTo(-10, -15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        if (!isHit && Math.random() > 0.8) {
+            ctx.strokeStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(-25, (Math.random()-0.5)*20);
+            ctx.stroke();
+        }
+        
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        ctx.fillStyle = primary;
+        ctx.fillRect(0, -2, 25, 4);
+
+    } else if (tank.chassis === 'inferno-cobra') {
+        // Inferno Cobra Visuals
+        const primary = tank.color || '#ef4444';
+        const dark = '#1c1917';
+        
+        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowBlur = isHit ? 20 : 15;
+        
+        ctx.fillStyle = cFill(dark);
+        ctx.strokeStyle = cStroke(primary);
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(25, 0);
+        ctx.bezierCurveTo(10, 15, -10, 15, -20, 10);
+        ctx.lineTo(-15, 0);
+        ctx.lineTo(-20, -10);
+        ctx.bezierCurveTo(-10, -15, 10, -15, 25, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        ctx.fillStyle = '#7f1d1d';
+        ctx.fillRect(0, -6, 30, 12);
+        if (!isHit) {
+            ctx.fillStyle = '#fca5a5';
+            ctx.beginPath(); ctx.arc(25, 0, 4, 0, Math.PI*2); ctx.fill();
+        }
+
+    } else if (tank.chassis === 'crystal-vanguard') {
+        // Crystal Vanguard Visuals
+        const primary = tank.color || '#06b6d4';
+        const dark = '#1c1917';
+        
+        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowBlur = isHit ? 20 : 15;
+        
+        ctx.fillStyle = cFill(dark);
+        ctx.strokeStyle = cStroke(primary);
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(0, 15);
+        ctx.lineTo(-20, 0);
+        ctx.lineTo(0, -15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        if (!isHit) {
+            ctx.fillStyle = 'rgba(6, 182, 212, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(0, 8);
+            ctx.lineTo(-10, 0);
+            ctx.lineTo(0, -8);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        ctx.rotate(degToRad(tank.turretAngle - tank.angle));
+        ctx.fillStyle = primary;
+        ctx.beginPath();
+        ctx.moveTo(0, -4);
+        ctx.lineTo(30, -8);
+        ctx.lineTo(30, 8);
+        ctx.lineTo(0, 4);
+        ctx.fill();
+
+    } else if (tank.chassis === 'rogue-scout') {
         // --- REMASTERED ROGUE SCOUT ---
         const primary = tank.color || '#FF003C';
         const dark = '#1c1917';
@@ -899,20 +1217,46 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         // Overdrive Visuals...
         const overdrive = abilities?.find(a => a.id === 'overdrive' && a.state === 'active');
         if (overdrive && !isHit) {
-             // ... existing overdrive drawing ...
+             // --- OVERDRIVE AURA --- 
              ctx.save();
              const gold = '#f59e0b';
              const brightGold = '#fcd34d';
              const intenseWhite = '#ffffff';
-             ctx.shadowBlur = 30; ctx.shadowColor = brightGold;
-             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.fill();
-             // ... (rest of overdrive visuals)
+             const pulse = 0.9 + Math.sin(now * 0.01) * 0.1;
+
+             ctx.shadowBlur = 30;
+             ctx.shadowColor = brightGold;
+
+             // Outer soft glow
+             ctx.fillStyle = `rgba(245, 158, 11, ${0.2 * pulse})`;
+             ctx.beginPath();
+             ctx.arc(0, 0, 35, 0, Math.PI * 2);
+             ctx.fill();
+
+             // Jagged energy ring
+             ctx.strokeStyle = `rgba(252, 211, 77, ${0.8 * pulse})`;
+             ctx.lineWidth = 2;
+             ctx.setLineDash([15, 10]);
+             ctx.lineDashOffset = now * -0.05;
+             ctx.beginPath();
+             ctx.arc(0, 0, 28, 0, Math.PI * 2);
+             ctx.stroke();
+
+             // Inner core
+             ctx.fillStyle = intenseWhite;
+             ctx.shadowBlur = 15;
+             ctx.beginPath();
+             ctx.arc(0, 0, 5, 0, Math.PI * 2);
+             ctx.fill();
+             
              ctx.restore();
         }
 
+
+
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
         
-        if (tank.activePowerUp === 'dualCannon') {
+        if (tank.activePowerUps?.includes('dualCannon')) {
             ctx.fillStyle = cFill('#334155');
             ctx.fillRect(0, -9, 32, 6); 
             ctx.fillRect(0, 3, 32, 6);  
@@ -921,10 +1265,13 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
                 ctx.fillRect(6, -7, 20, 2); 
                 ctx.fillRect(6, 5, 20, 2);  
             }
-        } else if (tank.activePowerUp === 'homingMissiles') {
+        } else {
             ctx.fillStyle = cFill('#334155');
             ctx.fillRect(-2, -3, 32, 6);
             if (!isHit) { ctx.fillStyle = primary; ctx.fillRect(4, -1, 20, 2); }
+        }
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
             ctx.save();
             ctx.fillStyle = cFill('#1e293b'); ctx.fillRect(-6, -16, 12, 6);
             ctx.fillStyle = isHit ? '#fff' : '#ef4444';
@@ -934,10 +1281,6 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fillStyle = isHit ? '#fff' : '#ef4444';
             for(let i=0; i<Math.min(3, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-4 + i*4, 13, 2, 0, Math.PI*2); ctx.fill(); }
             ctx.restore();
-        } else {
-            ctx.fillStyle = cFill('#334155');
-            ctx.fillRect(-2, -3, 32, 6);
-            if (!isHit) { ctx.fillStyle = primary; ctx.fillRect(4, -1, 20, 2); }
         }
 
         ctx.fillStyle = cFill(dark);
@@ -986,7 +1329,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fillStyle = cFill('#292524');
             ctx.fillRect(0, -5, 28, 10);
             
-            if (tank.activePowerUp === 'dualCannon') {
+            if (tank.activePowerUps?.includes('dualCannon')) {
                  ctx.fillStyle = cFill('#292524');
                  ctx.fillRect(0, -8, 28, 4);
                  ctx.fillRect(0, 4, 28, 4);
@@ -1000,7 +1343,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
                 ctx.fillRect(26, -6, 4, 12);
             }
             
-            if (tank.activePowerUp === 'homingMissiles') {
+            if (tank.activePowerUps?.includes('homingMissiles')) {
                 ctx.save();
                 ctx.fillStyle = '#333'; ctx.fillRect(-5, -20, 10, 6); ctx.fillRect(-5, 14, 10, 6);
                 ctx.fillStyle = '#ef4444';
@@ -1052,7 +1395,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.stroke();
 
             // DUAL CANNON - Basic tank
-            if (tank.activePowerUp === 'dualCannon') {
+            if (tank.activePowerUps?.includes('dualCannon')) {
                 ctx.fillStyle = cFill('#292524');
                 ctx.fillRect(0, -6, 22, 4); ctx.fillRect(0, 2, 22, 4); 
                 if (!isHit) { ctx.fillStyle = primary; ctx.fillRect(20, -5, 4, 2); ctx.fillRect(20, 3, 4, 2); }
@@ -1064,7 +1407,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
                 ctx.fillRect(20, -2, 4, 4);
             }
             
-            if (tank.activePowerUp === 'homingMissiles') {
+            if (tank.activePowerUps?.includes('homingMissiles')) {
                 ctx.save();
                 ctx.rotate(-Math.PI/2);
                 ctx.fillStyle = '#333'; ctx.fillRect(-8, -8, 16, 6);
@@ -1103,6 +1446,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     ctx.restore();
 }
+
 
 export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, owner: any, isToxic: boolean) {
     ctx.save();
@@ -1145,12 +1489,12 @@ export function drawDamageNumbers(ctx: CanvasRenderingContext2D, nums: DamageNum
         let scale = 1; if (progress < 0.15) { scale = progress / 0.15; } else if (progress < 0.3) { scale = 1 + (0.3 - progress) * 0.5; } else { scale = 1; }
         const alpha = progress > 0.7 ? 1 - ((progress - 0.7) / 0.3) : 1;
         ctx.save(); ctx.translate(num.position.x, num.position.y - yOffset); ctx.scale(scale, scale); ctx.globalAlpha = alpha;
-        const val = parseInt(num.text); const isCrit = !isNaN(val) && val >= 4; const isHeal = num.text === 'REPAIR' || num.text.includes('+') || num.text === 'LEECH';
-        ctx.font = (isCrit || isHeal) ? '900 24px "Orbitron", sans-serif' : 'bold 16px "Orbitron", sans-serif';
-        ctx.shadowColor = num.color; ctx.shadowBlur = isCrit ? 20 : 8;
+        const isHeal = num.text === 'REPAIR' || num.text.includes('+') || num.text === 'LEECH';
+        ctx.font = (num.isCritical || isHeal) ? '900 24px "Orbitron", sans-serif' : 'bold 16px "Orbitron", sans-serif';
+        ctx.shadowColor = num.color; ctx.shadowBlur = num.isCritical ? 20 : 8;
         ctx.strokeStyle = '#000000'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeText(num.text, 0, 0);
         ctx.fillStyle = num.color; ctx.fillText(num.text, 0, 0);
-        if (isCrit) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = alpha * 0.7; ctx.fillText(num.text, 0, 0); }
+        if (num.isCritical) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = alpha * 0.7; ctx.fillText(num.text, 0, 0); }
         ctx.restore();
     });
     ctx.restore();
@@ -1175,7 +1519,7 @@ export function drawTelegraphs(ctx: CanvasRenderingContext2D, telegraphs: Telegr
              ctx.fillStyle = '#1f2937'; ctx.beginPath(); const spikes = 6; for(let i=0; i<spikes * 2; i++) { const r = i % 2 === 0 ? 14 : 8; const a = (i / (spikes * 2)) * Math.PI * 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#f97316'; ctx.lineWidth = 1.5; ctx.stroke();
              const blinkSpeed = progress > 0.7 ? 25 : 4; const blink = Math.sin(now * 0.001 * blinkSpeed) > 0;
              ctx.fillStyle = blink ? '#ff0000' : '#450a0a'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = blink ? 15 : 0; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
-             if (progress > 0.4) { ctx.strokeStyle = `rgba(255, 0, 0, ${0.5})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 20 * progress, 0, Math.PI*2); ctx.stroke(); }
+             if (progress > 0.4) { ctx.strokeStyle = `rgba(255, 0, 0, ${0.5})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, 20 * progress), 0, Math.PI*2); ctx.stroke(); }
         }
         ctx.restore();
     });
@@ -1197,7 +1541,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
             ctx.strokeStyle = '#fbbf24';
             ctx.lineWidth = 10;
             ctx.beginPath();
-            ctx.arc(0, 0, progress * 1000, 0, Math.PI * 2);
+            ctx.arc(0, 0, Math.max(0, progress * 1000), 0, Math.PI * 2);
             ctx.stroke();
         } else if (anim.type === 'transformCharge') {
             // REFINED IMPLOSION EFFECT
@@ -1221,7 +1565,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
             ctx.shadowColor = color;
             ctx.shadowBlur = 20 * gatherProgress;
             ctx.beginPath();
-            ctx.arc(shakeX, shakeY, gatherProgress * 60, 0, Math.PI*2);
+            ctx.arc(shakeX, shakeY, Math.max(0, gatherProgress * 60), 0, Math.PI*2);
             ctx.fill();
             
             // Inner suction lines
@@ -1264,7 +1608,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
             }
         }
         else if (anim.type === 'explosion' || anim.type === 'hit') {
-            const radius = (anim.width || 30) * progress; ctx.globalAlpha = 1 - progress; ctx.fillStyle = anim.color || '#f97316'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+            const radius = (anim.width || 30) * progress; ctx.globalAlpha = 1 - progress; ctx.fillStyle = anim.color || '#f97316'; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, radius), 0, Math.PI * 2); ctx.fill();
         } else if (anim.type === 'shockwave') {
              // REDESIGNED SHOCKWAVE ANIMATION
              const maxRadius = anim.width || 200;
@@ -1274,7 +1618,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
              if (p < 0.2) {
                  ctx.fillStyle = `rgba(255, 255, 255, ${1 - (p * 5)})`;
                  ctx.beginPath();
-                 ctx.arc(0, 0, maxRadius * 0.5 * p, 0, Math.PI*2);
+                 ctx.arc(0, 0, Math.max(0, maxRadius * 0.5 * p), 0, Math.PI*2);
                  ctx.fill();
              }
 
@@ -1284,14 +1628,14 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
              ctx.shadowBlur = 20;
              ctx.shadowColor = '#f00';
              ctx.beginPath();
-             ctx.arc(0, 0, maxRadius * p, 0, Math.PI * 2);
+             ctx.arc(0, 0, Math.max(0, maxRadius * p), 0, Math.PI * 2);
              ctx.stroke();
              
              // 3. Inner Echo Rings
              ctx.lineWidth = 2;
              ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - p) * 0.5})`;
              ctx.beginPath();
-             ctx.arc(0, 0, maxRadius * p * 0.7, 0, Math.PI * 2);
+             ctx.arc(0, 0, Math.max(0, maxRadius * p * 0.7), 0, Math.PI * 2);
              ctx.stroke();
 
              // 4. Debris/Sparks
@@ -1301,7 +1645,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                  const dist = maxRadius * p * (0.8 + Math.random() * 0.4);
                  ctx.fillStyle = '#ffff00';
                  ctx.beginPath();
-                 ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, 3 * (1-p), 0, Math.PI*2);
+                 ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, Math.max(0, 3 * (1-p)), 0, Math.PI*2);
                  ctx.fill();
              }
 
@@ -1338,7 +1682,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                  // Muzzle Flash
                  if (progress < 0.3) {
                      ctx.fillStyle = '#ffffff';
-                     ctx.beginPath(); ctx.arc(0, 0, 40 * (1 - progress/0.3), 0, Math.PI*2); ctx.fill();
+                     ctx.beginPath(); ctx.arc(0, 0, Math.max(0, 40 * (1 - progress/0.3)), 0, Math.PI*2); ctx.fill();
                  }
 
                  // Magnetic Rings along the path
@@ -1366,12 +1710,13 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
         } else if (anim.type === 'dashTrail') {
              ctx.globalAlpha = 1 - progress; ctx.fillStyle = anim.color || '#fff'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI*2); ctx.fill();
         } else if (anim.type === 'shieldHit') {
-             ctx.strokeStyle = anim.color || '#06b6d4'; ctx.lineWidth = 2; ctx.globalAlpha = 1 - progress; ctx.beginPath(); ctx.arc(0, 0, 40 * progress + 30, 0, Math.PI * 2); ctx.stroke();
+             ctx.strokeStyle = anim.color || '#06b6d4'; ctx.lineWidth = 2; ctx.globalAlpha = 1 - progress; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, 40 * progress + 30), 0, Math.PI * 2); ctx.stroke();
         } else if (anim.type === 'mortarStrike') {
-             const maxR = 60; ctx.fillStyle = `rgba(239, 68, 68, ${0.5 * (1-progress)})`; ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.fill();
-             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.globalAlpha = 1 - progress; ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.stroke();
+             const maxR = 60; ctx.fillStyle = `rgba(239, 68, 68, ${0.5 * (1-progress)})`; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, maxR * progress), 0, Math.PI*2); ctx.fill();
+             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.globalAlpha = 1 - progress; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, maxR * progress), 0, Math.PI*2); ctx.stroke();
         } else if (anim.type === 'finalBlast') {
-             const maxR = 1000; ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress})`; ctx.beginPath(); ctx.arc(0, 0, maxR * progress, 0, Math.PI*2); ctx.fill();
+             const maxR = 1000; ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress})`; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, maxR * progress), 0, Math.PI*2); ctx.fill();
+        
         } else if (anim.type === 'orbitalBeam') {
             // Vertical beam from sky
             // 1. Ground impact ring
@@ -1380,7 +1725,7 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
             ctx.lineWidth = 3;
             ctx.globalAlpha = 1 - progress;
             ctx.beginPath();
-            ctx.arc(0, 0, maxR * progress, 0, Math.PI * 2);
+            ctx.arc(0, 0, Math.max(0, maxR * progress), 0, Math.PI * 2);
             ctx.stroke();
 
             // 2. The Beam itself
@@ -1419,6 +1764,43 @@ export function drawPowerUp(ctx: CanvasRenderingContext2D, powerUp: PowerUp, now
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
 }
+
+
+export function drawBarrel(ctx: CanvasRenderingContext2D, barrel: Barrel) {
+    ctx.save();
+    ctx.translate(barrel.position.x, barrel.position.y);
+    
+    // Pulsing effect
+    const pulse = Math.sin(Date.now() * 0.005) * 0.1 + 1;
+    ctx.scale(pulse, pulse);
+    
+    // Barrel Body
+    ctx.fillStyle = '#f59e0b';
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(0, 0, barrel.radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Warning Stripes
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-10, -10); ctx.lineTo(10, 10);
+    ctx.moveTo(10, -10); ctx.lineTo(-10, 10);
+    ctx.stroke();
+    
+    // Core
+    ctx.fillStyle = '#fffbeb';
+    ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
+}
+
+
 
 export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone[], now: number) {
     zones.forEach(zone => {
@@ -1462,6 +1844,35 @@ export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone
              // Core Heat
              ctx.fillStyle = `rgba(185, 28, 28, ${pulse * 0.5})`;
              ctx.beginPath(); ctx.arc(0, 0, zone.radius * 0.8, 0, Math.PI*2); ctx.fill();
+        } else if (zone.type === 'fire') {
+             const pulse = 0.8 + Math.sin(now * 0.01) * 0.2;
+             const flicker = Math.random() * 0.2 + 0.8;
+             
+             // Base Heat
+             const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, zone.radius);
+             grad.addColorStop(0, `rgba(239, 68, 68, ${0.4 * pulse})`);
+             grad.addColorStop(0.6, `rgba(249, 115, 22, ${0.2 * pulse})`);
+             grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+             ctx.fillStyle = grad;
+             ctx.beginPath(); ctx.arc(0, 0, zone.radius, 0, Math.PI*2); ctx.fill();
+             
+             // Flame Particles
+             const numFlames = 12;
+             for(let i=0; i<numFlames; i++) {
+                 const angle = (i / numFlames) * Math.PI * 2 + (now * 0.002);
+                 const r = zone.radius * (0.3 + Math.random() * 0.6);
+                 const px = Math.cos(angle) * r;
+                 const py = Math.sin(angle) * r;
+                 const size = (4 + Math.random() * 6) * flicker;
+                 
+                 ctx.fillStyle = i % 2 === 0 ? '#ef4444' : '#f97316';
+                 ctx.beginPath();
+                 ctx.moveTo(px, py);
+                 ctx.lineTo(px - size/2, py + size);
+                 ctx.lineTo(px + size/2, py + size);
+                 ctx.closePath();
+                 ctx.fill();
+             }
         }
         ctx.restore();
     });

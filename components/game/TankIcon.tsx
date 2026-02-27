@@ -1,13 +1,15 @@
 
 import React from 'react';
 
+import { ChassisType } from '../../types';
+
 interface TankIconProps {
   color: string;
   className?: string;
   type?: 'player' | 'enemy' | 'boss';
   tier?: 'basic' | 'intermediate';
   bossType?: 'goliath' | 'viper' | 'sentinel';
-  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime';
+  chassis?: ChassisType;
 }
 
 const TankIcon: React.FC<TankIconProps> = ({ 
@@ -22,23 +24,85 @@ const TankIcon: React.FC<TankIconProps> = ({
   
   const renderBody = () => {
       // --- GOLIATH (Boss / Chassis) ---
-      if ((type === 'boss' && bossType === 'goliath') || chassis === 'goliath-prime') {
+      if ((type === 'boss' && bossType === 'goliath') || chassis === 'goliath-prime' || chassis === 'goliath-prime-overdrive') {
+          const isOverdrive = chassis === 'goliath-prime-overdrive';
+          const goliathColor = isOverdrive ? '#b91c1c' : color;
+          const accentColor = isOverdrive ? '#fbbf24' : '#7f1d1d';
+
           return (
               <g>
-                  {/* Heavy Rear Tread Block */}
-                  <rect x="2" y="14" width="20" height="6" rx="1" fill="#1c1917" stroke={strokeColor} strokeWidth="0.5" />
+                  {/* Treads */}
+                  <rect x="2" y="2" width="6" height="20" rx="1" fill="#1c1917" stroke={strokeColor} strokeWidth="0.5" />
+                  <rect x="16" y="2" width="6" height="20" rx="1" fill="#1c1917" stroke={strokeColor} strokeWidth="0.5" />
+
+                  {/* Main Body (Octagon) */}
+                  <path d="M12 4 L18 7 L18 17 L12 20 L6 17 L6 7 Z" fill="#450a0a" stroke={goliathColor} strokeWidth="1.5"/>
                   
-                  {/* Chassis (Red Octagon) */}
-                  <path d="M12 4 L18 6.5 L20 12 L18 17.5 L12 20 L6 17.5 L4 12 L6 6.5 Z" fill="#450a0a" stroke={color} strokeWidth="1.5"/>
-                  
-                  {/* Dual Barrels (Facing Up) */}
-                  <rect x="8.5" y="2" width="2.5" height="12" fill="#333" stroke={strokeColor} strokeWidth="0.5" />
-                  <rect x="13" y="2" width="2.5" height="12" fill="#333" stroke={strokeColor} strokeWidth="0.5" />
-                  
-                  {/* Turret Cap */}
-                  <circle cx="12" cy="12" r="5" fill="#7f1d1d" stroke={strokeColor} strokeWidth="1"/>
+                  {/* Turret Base */}
+                  <circle cx="12" cy="12" r="8" fill={accentColor} stroke={goliathColor} strokeWidth="1"/>
+
+                  {/* Dual Barrels */}
+                  <rect x="10" y="2" width="4" height="12" fill="#333" stroke={strokeColor} strokeWidth="0.5" />
+                  <rect x="10" y="10" width="4" height="12" transform="rotate(180 12 12)" fill="#333" stroke={strokeColor} strokeWidth="0.5" />
+
                   {/* Red Eye */}
-                  <circle cx="12" cy="12" r="2" fill={color} />
+                  <circle cx="12" cy="12" r="3" fill={isOverdrive ? '#fbbf24' : '#fca5a5'} />
+              </g>
+          );
+      }
+
+      // --- PHANTOM WEAVER (Preview Style) ---
+      if (chassis === 'phantom-weaver') {
+          return (
+              <g transform="translate(0 2)">
+                  <path d="M12 20 L4 4 L12 8 L20 4 Z" fill="rgba(192, 77, 242, 0.1)" stroke={color} strokeWidth="1.5" />
+                  <path d="M12 8 L12 4" stroke={color} strokeWidth="1" />
+                  <circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1" fill="none" />
+              </g>
+          );
+      }
+
+      // --- TITAN OGRE (Preview Style) ---
+      if (chassis === 'titan-ogre') {
+          return (
+              <g transform="rotate(10 12 12)">
+                  <rect x="3" y="3" width="18" height="18" rx="1" fill="rgba(234, 88, 12, 0.1)" stroke={color} strokeWidth="1.5" />
+                  <rect x="5" y="5" width="6" height="6" fill="#1a1a1a" stroke={color} strokeWidth="0.5" />
+                  <rect x="13" y="5" width="6" height="6" fill="#1a1a1a" stroke={color} strokeWidth="0.5" />
+                  <rect x="5" y="13" width="6" height="6" fill="#1a1a1a" stroke={color} strokeWidth="0.5" />
+                  <rect x="13" y="13" width="6" height="6" fill="#1a1a1a" stroke={color} strokeWidth="0.5" />
+              </g>
+          );
+      }
+
+      // --- VOLT STRIDER (New Style) ---
+      if (chassis === 'volt-strider') {
+          return (
+              <g>
+                  <path d="M8 4 L16 4 L10 12 L18 12 L8 20" stroke={color} strokeWidth="2" fill="none" />
+                  <circle cx="8" cy="4" r="2" fill={color} />
+                  <circle cx="18" cy="20" r="2" fill={color} />
+              </g>
+          );
+      }
+
+      // --- INFERNO COBRA (New Style) ---
+      if (chassis === 'inferno-cobra') {
+          return (
+              <g>
+                  <path d="M12 2 C 6 2, 4 8, 4 12 C 4 18, 8 22, 12 22 C 16 22, 20 18, 20 12 C 20 8, 18 2, 12 2 Z" fill="rgba(239, 68, 68, 0.1)" stroke={color} strokeWidth="1.5" />
+                  <path d="M9 8 L11 10" stroke={color} strokeWidth="1.5" />
+                  <path d="M15 8 L13 10" stroke={color} strokeWidth="1.5" />
+              </g>
+          );
+      }
+
+      // --- CRYSTAL VANGUARD (New Style) ---
+      if (chassis === 'crystal-vanguard') {
+          return (
+              <g>
+                  <path d="M12 2 L22 10 L18 22 L6 22 L2 10 Z" fill="rgba(6, 182, 212, 0.1)" stroke={color} strokeWidth="1.5" />
+                  <path d="M12 2 L12 22 M2 10 L22 10 M12 2 L6 22 M12 2 L18 22" stroke={color} strokeWidth="0.5" opacity="0.7" />
               </g>
           );
       }
@@ -48,13 +112,13 @@ const TankIcon: React.FC<TankIconProps> = ({
           return (
               <g>
                   {/* Treads */}
-                  <rect x="4" y="4" width="4" height="16" fill="#292524" />
-                  <rect x="16" y="4" width="4" height="16" fill="#292524" />
+                  <rect x="2" y="2" width="6" height="20" rx="1" fill="#292524" />
+                  <rect x="16" y="2" width="6" height="20" rx="1" fill="#292524" />
                   {/* Body */}
-                  <rect x="7" y="7" width="10" height="10" fill="#44403c" stroke={color} strokeWidth="1"/>
-                  {/* Heavy Turret */}
-                  <rect x="10" y="3" width="4" height="12" fill="#1c1917" />
-                  <rect x="9" y="9" width="6" height="6" fill="#1c1917" stroke={color} strokeWidth="0.5"/>
+                  <rect x="7" y="6" width="10" height="12" rx="1" fill="#44403c" stroke={color} strokeWidth="1"/>
+                  {/* Turret */}
+                  <rect x="10" y="2" width="4" height="14" fill="#1c1917" />
+                  <rect x="9" y="8" width="6" height="8" fill="#1c1917" stroke={color} strokeWidth="0.5"/>
               </g>
           );
       }
@@ -64,33 +128,27 @@ const TankIcon: React.FC<TankIconProps> = ({
       if (type === 'player' && (!chassis || chassis === 'vector-01')) {
           return (
               <g>
-                  {/* Pontoons */}
-                  <path d="M5 6 L8 6 L8 18 L5 18 Z" fill="#020617" stroke={color} strokeWidth="0.5"/>
-                  <path d="M16 6 L19 6 L19 18 L16 18 Z" fill="#020617" stroke={color} strokeWidth="0.5"/>
+                  {/* Treads */}
+                  <rect x="4" y="4" width="4" height="16" fill="#020617" stroke={color} strokeWidth="0.5"/>
+                  <rect x="16" y="4" width="4" height="16" fill="#020617" stroke={color} strokeWidth="0.5"/>
                   {/* Body */}
-                  <path d="M9 8 L15 8 L14 16 L10 16 Z" fill="#1e293b" />
+                  <rect x="7" y="7" width="10" height="10" fill="#1e293b" />
                   {/* Turret */}
                   <rect x="11" y="4" width="2" height="10" fill="#334155" />
-                  <circle cx="12" cy="12" r="3" fill="#020617" stroke={color} strokeWidth="1"/>
+                  <circle cx="12" cy="12" r="4" fill="#020617" stroke={color} strokeWidth="1"/>
               </g>
           );
       }
       
       // --- ROGUE SCOUT (Basic Enemy / Chassis / Fallback) ---
       // Rotated to point UP for consistency with other icons
-      // REMASTERED PATH
       return (
           <g>
-              {/* Remastered Delta Body (Arrowhead Pointing Up) 
-                  Based on: M12 2 L19 19 L13 15 L11 15 L5 19 Z
-              */}
-              <path d="M12 2 L19 19 L13 15 L11 15 L5 19 Z" fill="#1c1917" stroke={color} strokeWidth="1"/>
-              
-              {/* Engine Block */}
-              <rect x="10.5" y="16" width="3" height="4" fill={color} />
-              
-              {/* Turret / Sensor */}
+              {/* Body */}
+              <path d="M12 2 L18 18 L12 14 L6 18 Z" fill="#1c1917" stroke={color} strokeWidth="1"/>
+              {/* Turret */}
               <circle cx="12" cy="12" r="3" fill="#334155" />
+              <rect x="11" y="2" width="2" height="10" fill="#334155" />
               <circle cx="12" cy="11" r="1.5" fill={color} />
           </g>
       );

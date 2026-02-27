@@ -1,4 +1,6 @@
 
+export type ChassisType = 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime' | 'goliath-prime-overdrive' | 'phantom-weaver' | 'titan-ogre' | 'volt-strider' | 'inferno-cobra' | 'crystal-vanguard';
+
 // FIX: Removed self-import which was causing declaration conflicts.
 // FIX: Replaced incorrect component code with all necessary type definitions for the application.
 export type Screen = 'loading' | 'main-menu' | 'settings' | 'difficulty-selection' | 'game' | 'duel-selection' | 'sandbox-selection';
@@ -18,6 +20,15 @@ export enum Language {
   English = 'English',
 }
 
+export interface Barrel {
+    id: string;
+    position: Vector;
+    radius: number;
+    health: number;
+    maxHealth: number;
+    createdAt: number;
+}
+
 export type GameMode = 'campaign' | 'duel' | 'sandbox';
 
 export interface DuelConfig {
@@ -25,12 +36,12 @@ export interface DuelConfig {
   opponentType: 'tank' | 'boss';
   tier?: 'basic' | 'intermediate';
   bossType?: 'goliath' | 'viper' | 'sentinel';
-  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime'; // Added chassis
+  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime' | 'phantom-weaver' | 'titan-ogre' | 'volt-strider' | 'inferno-cobra' | 'crystal-vanguard'; // Added chassis
   opponentName: string;
 }
 
 export interface SandboxConfig {
-  characterId: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime';
+  characterId: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime' | 'phantom-weaver' | 'titan-ogre' | 'volt-strider' | 'inferno-cobra' | 'crystal-vanguard';
 }
 
 export interface GameConfig {
@@ -85,6 +96,7 @@ export interface Projectile {
   isChronoShard?: boolean;
   isBossOrb?: boolean;
   isVampiric?: boolean; // New: Heals owner on hit
+  isNapalm?: boolean; // New: Creates fire zone on impact
   color?: string;
 }
 
@@ -111,7 +123,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'omniBarrage' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'omniBarrage' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard';
 
 export interface Ability {
   id: AbilityId;
@@ -155,7 +167,7 @@ export interface Tank {
   status: 'spawning' | 'active' | 'dying' | 'dead';
   tier?: 'basic' | 'intermediate';
   bossType?: 'goliath' | 'viper' | 'sentinel'; // Added to Tank for Sandbox mode players
-  chassis?: 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliath-prime' | 'goliath-prime-overdrive'; // Added for specific visuals
+  chassis?: ChassisType; // Added for specific visuals
   spawnTime?: number;
   position: Vector;
   velocity: Vector;
@@ -170,7 +182,7 @@ export interface Tank {
   deaths: number;
   deathTime?: number;
   respawnTime?: number;
-  activePowerUp?: PowerUpType | null;
+  activePowerUps?: PowerUpType[];
   powerUpExpireTime?: number;
   shieldHealth?: number;
   path?: Vector[];
@@ -186,6 +198,8 @@ export interface Tank {
   aiMode?: 'engage' | 'strafe' | 'flank';
   aiStrafeDir?: number;
   aiStateTimer?: number;
+  critChance?: number;
+  critMultiplier?: number;
 }
 
 export interface Telegraph {
@@ -204,7 +218,7 @@ export interface Telegraph {
 
 export interface EffectZone {
   id: string;
-  type: 'chrono' | 'poison' | 'fissure';
+  type: 'chrono' | 'poison' | 'fissure' | 'fire';
   position: Vector;
   radius: number;
   createdAt: number;
@@ -247,6 +261,7 @@ export interface Boss {
   lastFireTime?: number;
   hasUsedLastStand?: boolean;
   statusEffects?: StatusEffect[];
+  shieldHealth?: number; // Added for consistency
   shieldSegments?: { angle: number, health: number, maxHealth: number, active: boolean }[]; // For Sentinel
   attackState: {
     currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'omniBarrage';
@@ -275,6 +290,7 @@ export interface DamageNumber {
   createdAt: number;
   duration: number;
   color: string;
+  isCritical?: boolean;
 }
 
 export interface DamageIndicator {
@@ -282,6 +298,24 @@ export interface DamageIndicator {
     angle: number; // angle from player to damage source
     createdAt: number;
     duration: number;
+}
+
+export interface CombatText {
+    id: string;
+    text: string;
+    createdAt: number;
+    duration: number;
+    color: string;
+    isCritical?: boolean;
+}
+
+export interface KillFeedMessage {
+    id: string;
+    killerName: string;
+    victimName: string;
+    killerColor: string;
+    victimColor: string;
+    createdAt: number;
 }
 
 export interface CutsceneState {

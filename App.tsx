@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { SettingsProvider } from './contexts/SettingsContext';
+import { SettingsProvider, defaultSettings } from './contexts/SettingsContext';
 import { AudioProvider } from './contexts/AudioContext';
 import LoadingScreen from './components/LoadingScreen';
 import MainMenu from './components/MainMenu';
@@ -79,11 +79,10 @@ const App: React.FC = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
       const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3-pro-preview', // Updated to use gemini-3-pro-preview
+        model: 'gemini-3-pro-preview',
         contents: input,
         config: {
-          thinkingConfig: { thinkingBudget: 32768 }, // Added thinkingBudget
-          // Removed maxOutputTokens as instructed when using thinking mode
+          thinkingConfig: { thinkingBudget: 32768 },
           systemInstruction: `You are **Commander Darlek**, a battle-hardened tactical AI integrated into the Vector Siege mainframe.
 Your mission: Ensure the Pilot (user) survives the neon onslaught.
 Your tone: Gritty, cynical, concise, and professional. Use cyberpunk military slang ("chrome", "cycles", "zeroed", "glitch", "meatbag").
@@ -132,13 +131,9 @@ Keep responses under 3 sentences unless a full briefing is requested. Use **Bold
       setChatMessages(prev => {
         const newMessages = [...prev];
         const lastMsg = newMessages[newMessages.length - 1];
-        // If the last message was the empty bot message, update it to error
         if (lastMsg.sender === 'bot' && lastMsg.text === '') {
            lastMsg.text = "Connection severed. Neural link unstable. Try again.";
         } else {
-           // Otherwise push a new error message (though usually we are in the middle of streaming)
-           // Actually, if it fails mid-stream, we might want to append error or replace.
-           // For simplicity, we just append or set if empty.
            if (lastMsg.sender === 'bot') {
              lastMsg.text += "\n[CONNECTION LOST]";
            }
@@ -149,7 +144,6 @@ Keep responses under 3 sentences unless a full briefing is requested. Use **Bold
       setIsChatbotLoading(false);
     }
   };
-
 
   const renderScreen = (screen: Screen) => {
     switch (screen) {
