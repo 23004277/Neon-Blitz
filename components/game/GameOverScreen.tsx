@@ -1,15 +1,34 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import CyberButton from '../common/CyberButton';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface GameOverScreenProps {
   score: number;
   kills: number;
   onRestart: () => void;
   onMainMenu: () => void;
+  isCampaign: boolean;
 }
 
-const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, kills, onRestart, onMainMenu }) => {
+const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, kills, onRestart, onMainMenu, isCampaign }) => {
+  const { settings, setSettings } = useSettings();
+  const [earnedCredits, setEarnedCredits] = useState(0);
+
+  useEffect(() => {
+    if (isCampaign) {
+      // Calculate credits based on score and kills
+      const calculatedCredits = Math.floor(score / 10) + (kills * 5);
+      setEarnedCredits(calculatedCredits);
+      
+      // Update global settings
+      setSettings(prev => ({
+        ...prev,
+        credits: prev.credits + calculatedCredits
+      }));
+    }
+  }, [isCampaign, score, kills, setSettings]);
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
       <div className="relative bg-black/90 border-2 border-red-500/50 p-8 max-w-md w-full text-center box-glow-magenta clip-corner-4 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
@@ -24,7 +43,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, kills, onRestart
             </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-8 bg-red-900/10 border border-red-500/20 p-4 rounded-sm">
+        <div className="grid grid-cols-2 gap-4 mb-4 bg-red-900/10 border border-red-500/20 p-4 rounded-sm">
           <div className="flex flex-col border-r border-red-500/20">
             <span className="text-[10px] font-orbitron text-stone-500 uppercase tracking-wider">Total Score</span>
             <span className="text-3xl font-orbitron text-white">{score}</span>
@@ -34,6 +53,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, kills, onRestart
             <span className="text-3xl font-orbitron text-white">{kills}</span>
           </div>
         </div>
+
+        {isCampaign && (
+            <div className="mb-8 bg-cyan-900/10 border border-cyan-500/20 p-4 rounded-sm flex flex-col items-center justify-center">
+                <span className="text-[10px] font-orbitron text-cyan-500 uppercase tracking-wider mb-1">Data Fragments Recovered</span>
+                <div className="flex items-center gap-2 text-2xl font-orbitron text-cyan-300">
+                    <span className="text-cyan-500">◈</span> {earnedCredits}
+                </div>
+            </div>
+        )}
 
         <div className="flex flex-col gap-4">
           <CyberButton onClick={onRestart} variant="danger" size="lg" className="w-full justify-center group" icon={<span className="group-hover:rotate-180 transition-transform duration-500">↻</span>}>

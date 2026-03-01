@@ -156,7 +156,12 @@ const SandboxPanel: React.FC<SandboxPanelProps> = ({ isOpen, onClose, actions, s
     };
 
     return (
-        <div className="absolute right-4 bottom-20 w-80 bg-black/90 border-2 border-[var(--color-primary-cyan)] p-0 z-50 font-rajdhani text-white shadow-[0_0_40px_rgba(0,224,255,0.2)] backdrop-blur-xl overflow-hidden flex flex-col rounded-sm">
+        <div 
+            className="absolute right-4 bottom-20 w-80 bg-black/95 border-2 border-[var(--color-primary-cyan)] p-0 z-50 font-rajdhani text-white shadow-[0_0_50px_rgba(0,224,255,0.3)] backdrop-blur-2xl overflow-hidden flex flex-col rounded-sm"
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+        >
             {/* Header */}
             <div className="bg-[var(--color-primary-cyan)]/10 px-6 py-4 border-b border-[var(--color-primary-cyan)]/30 flex justify-between items-center">
                 <div className="flex flex-col">
@@ -190,9 +195,17 @@ const SandboxPanel: React.FC<SandboxPanelProps> = ({ isOpen, onClose, actions, s
 
             {/* Footer Status */}
             {settings.spawnMode !== 'none' && (
-                <div className="bg-red-500/20 border-t border-red-500/30 px-6 py-2 flex items-center justify-between animate-pulse">
-                    <span className="text-[10px] font-bold text-red-400 tracking-widest uppercase">Spawn Mode Active: {settings.spawnMode.split('-').pop()}</span>
-                    <button onClick={() => actions.setSpawnMode('none')} className="text-[10px] font-black text-white underline tracking-widest uppercase">Cancel</button>
+                <div className="bg-red-500/30 border-t border-red-500/50 px-6 py-3 flex items-center justify-between animate-pulse">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-red-400 tracking-widest uppercase leading-none">SPAWN MODE ACTIVE</span>
+                        <span className="text-[12px] font-bold text-white tracking-widest uppercase mt-1">{settings.spawnMode.split('-').pop()?.replace(/([A-Z])/g, ' $1')}</span>
+                    </div>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); actions.setSpawnMode('none'); }} 
+                        className="px-3 py-1 bg-red-600 hover:bg-red-500 text-[10px] font-black text-white tracking-widest uppercase transition-colors rounded-sm"
+                    >
+                        CANCEL [ESC]
+                    </button>
                 </div>
             )}
         </div>

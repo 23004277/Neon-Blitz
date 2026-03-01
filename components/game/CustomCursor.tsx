@@ -148,14 +148,31 @@ const CustomCursor: React.FC = () => {
       {/* Coordinates HUD */}
       <div 
         id="cursor-coords"
-        className="absolute top-0 left-0 opacity-60 text-[10px] tracking-widest whitespace-nowrap will-change-transform"
+        className="absolute top-0 left-0 opacity-80 text-[10px] tracking-widest whitespace-nowrap will-change-transform"
       >
-        <div className="flex flex-col gap-0.5">
-          <span className="bg-black/50 px-1">X: {Math.round(mousePos.x).toString().padStart(4, '0')}</span>
-          <span className="bg-black/50 px-1">Y: {Math.round(mousePos.y).toString().padStart(4, '0')}</span>
+        <div className="flex flex-col gap-0.5 font-mono">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-1 h-1 bg-cyan-500 animate-pulse" />
+            <span className="text-[8px] text-cyan-400/60 uppercase">Targeting System Active</span>
+          </div>
+          <div className="flex items-center justify-between bg-black/40 border-l-2 border-cyan-500 px-2 py-0.5 backdrop-blur-[2px]">
+            <span className="text-cyan-600 mr-2">LAT:</span>
+            <span>{Math.round(mousePos.x).toString().padStart(4, '0')}</span>
+          </div>
+          <div className="flex items-center justify-between bg-black/40 border-l-2 border-cyan-500 px-2 py-0.5 backdrop-blur-[2px]">
+            <span className="text-cyan-600 mr-2">LNG:</span>
+            <span>{Math.round(mousePos.y).toString().padStart(4, '0')}</span>
+          </div>
+          
+          {isClicking && (
+            <div className="mt-1 text-[8px] text-red-500 animate-pulse font-bold uppercase tracking-tighter">
+              ▸ Engaging Target
+            </div>
+          )}
         </div>
-        {/* Decorative Line */}
-        <div className="h-px w-8 bg-cyan-500/50 mt-1" />
+        
+        {/* Decorative Corner */}
+        <div className="absolute -top-1 -left-1 w-2 h-2 border-t border-l border-cyan-500/40" />
       </div>
 
     </div>

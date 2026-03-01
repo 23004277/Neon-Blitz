@@ -40,7 +40,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ player, enemies, boss }) => {
       kills: player.kills,
       deaths: player.deaths,
       isDead: player.status === 'dead',
-      color: 'var(--color-primary-cyan)'
+      color: player.color || 'var(--color-primary-cyan)'
     });
 
     // Add Boss

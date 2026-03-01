@@ -1,7 +1,30 @@
 
-import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState, Barrel, ChassisType } from '../../types';
+import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState, Barrel, ChassisType, ColorStyle } from '../../types';
 
 export const degToRad = (d: number) => d * (Math.PI / 180);
+
+const getStyle = (ctx: CanvasRenderingContext2D, color: string, secondaryColor: string | undefined, style: ColorStyle | undefined, radius: number = 20) => {
+    if (!style || style === 'solid') return color;
+    if (style === 'gradient') {
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, secondaryColor || color);
+        return grad;
+    }
+    if (style === 'neon') {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = color;
+        return color;
+    }
+    if (style === 'chrome') {
+        const grad = ctx.createLinearGradient(-radius, -radius, radius, radius);
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(0.5, color);
+        grad.addColorStop(1, secondaryColor || '#000');
+        return grad;
+    }
+    return color;
+};
 
 const SPAWN_DURATION = 1000;
 
@@ -249,20 +272,21 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
     }
 
     const isHit = boss.lastHitTime && now - boss.lastHitTime < 75;
-    const baseColor = isHit ? '#fff' : boss.color;
+    const bossColor = boss.color || '#ef4444';
+    const baseColor = getStyle(ctx, bossColor, boss.secondaryColor, boss.colorStyle, 80);
     
     ctx.rotate(degToRad(boss.angle));
     
     const scale = boss.size.width / 80; 
     ctx.scale(scale, scale);
     
-    ctx.shadowColor = baseColor;
+    ctx.shadowColor = isHit ? '#ffffff' : bossColor;
     ctx.shadowBlur = isHit ? 20 : 15;
 
-    ctx.fillStyle = isHit ? '#fff' : '#1c1917';
+    ctx.fillStyle = '#1c1917';
     ctx.fillRect(-45, -50, 30, 100); 
     
-    ctx.fillStyle = isHit ? '#fff' : '#450a0a'; 
+    ctx.fillStyle = '#450a0a'; 
     ctx.strokeStyle = baseColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -357,57 +381,31 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
             ctx.restore();
         }
     }
-    // --- OMNI BARRAGE TELEGRAPH ---
-    if (boss.attackState.currentAttack === 'omniBarrage' && boss.attackState.phase === 'telegraphing') {
-        const p = Math.min(1, (now - boss.attackState.phaseStartTime) / (boss.attackState.attackData?.telegraphDuration || 1500));
-        ctx.save();
-        ctx.scale(1/scale, 1/scale);
-        
-        const pulses = 3;
-        for(let i=0; i<pulses; i++) {
-             const offsetP = (p + i/pulses) % 1;
-             ctx.beginPath();
-             ctx.arc(0, 0, 150 * (1-offsetP), 0, Math.PI*2);
-             ctx.strokeStyle = `rgba(255, 60, 60, ${offsetP})`;
-             ctx.lineWidth = 4 * offsetP;
-             ctx.stroke();
-        }
+    // --- OMNI BARRAGE TELEGRAPH REMOVED ---
 
-        const numParticles = 20;
-        const radius = 120 * (1-p);
-        ctx.fillStyle = '#ef4444';
-        for(let i=0; i<numParticles; i++) {
-             const a = (i/numParticles) * Math.PI*2 + now*0.01;
-             ctx.beginPath();
-             ctx.arc(Math.cos(a)*radius, Math.sin(a)*radius, 4, 0, Math.PI*2);
-             ctx.fill();
-        }
-        
-        ctx.restore();
-    }
 
     ctx.shadowBlur = isHit ? 20 : 0; 
     ctx.rotate(degToRad(boss.turretAngle - boss.angle));
     
-    ctx.fillStyle = isHit ? '#fff' : '#1f2937';
+    ctx.fillStyle = '#1f2937';
     ctx.strokeStyle = baseColor;
     ctx.lineWidth = 2;
     
     ctx.fillRect(10, -18, 55, 12);
     ctx.fillRect(10, 6, 55, 12);
     
-    ctx.fillStyle = isHit ? '#fff' : '#7f1d1d';
+    ctx.fillStyle = '#7f1d1d';
     ctx.beginPath();
     ctx.arc(0, 0, 22, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
 
-    const isOmni = boss.attackState.currentAttack === 'omniBarrage';
-    ctx.fillStyle = isHit ? '#fff' : (isOmni ? '#ff0000' : '#fca5a5');
-    ctx.beginPath(); ctx.arc(0, 0, isOmni ? 10 : 8, 0, Math.PI*2); ctx.fill();
+    const isPoison = boss.attackState.currentAttack === 'poisonGas';
+    ctx.fillStyle = isPoison ? '#10b981' : '#fca5a5';
+    ctx.beginPath(); ctx.arc(0, 0, isPoison ? 10 : 8, 0, Math.PI*2); ctx.fill();
     
-    if (isOmni) {
-        ctx.shadowColor = '#f00';
+    if (isPoison) {
+        ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 10 + Math.random() * 10;
     }
 
@@ -691,24 +689,8 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.restore();
         }
         
-        // OMNI BARRAGE PLAYER CHARGING
-        const omni = abilities?.find(a => a.id === 'omniBarrage' && a.state === 'charging');
-        if (omni) {
-             const elapsed = now - (omni.startTime || 0);
-             const progress = Math.min(1, elapsed / (omni.chargeDuration || 1500));
-             ctx.fillStyle = `rgba(255, 60, 60, ${progress * 0.5})`;
-             ctx.beginPath();
-             ctx.arc(0, 0, Math.max(0, 80 * progress), 0, Math.PI*2);
-             ctx.fill();
-             
-             ctx.strokeStyle = `rgba(255, 60, 60, 0.8)`;
-             ctx.lineWidth = 2;
-             const rings = 3;
-             for(let i=0; i<rings; i++) {
-                 const r = 80 * ((progress + i/rings)%1);
-                 ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke();
-             }
-        }
+        // OMNI BARRAGE PLAYER CHARGING REMOVED
+
         
         // Overdrive Aura (Standard)
         const overdriveAbility = abilities?.find(a => a.id === 'overdrive' && a.state === 'active');
@@ -754,10 +736,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.scale(scale, scale);
         
         const isHit = tank.lastHitTime && now - tank.lastHitTime < 75;
-        const baseColor = isHit ? '#fff' : (isOverdrive ? '#b91c1c' : tank.color);
+        const tankColor = tank.color || '#00F0FF';
+        const baseColor = isHit ? '#fff' : (isOverdrive ? '#b91c1c' : getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 40));
         const accentColor = isOverdrive ? '#fbbf24' : '#7f1d1d';
         
-        ctx.shadowColor = baseColor;
+        ctx.shadowColor = isHit ? '#ffffff' : (isOverdrive ? '#b91c1c' : tankColor);
         ctx.shadowBlur = isHit ? 20 : 15;
 
         // Goliath Chassis
@@ -870,8 +853,8 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     const isHit = tank.lastHitTime && now - tank.lastHitTime < 75;
     
-    const cFill = (col: string) => isHit ? '#ffffff' : col;
-    const cStroke = (col: string) => isHit ? '#ffffff' : col;
+    const cFill = (col: any) => isHit ? '#ffffff' : col;
+    const cStroke = (col: any) => isHit ? '#ffffff' : col;
 
     // --- ENEMY POWER-UP AURAS ---
     if (!isPlayer && tank.activePowerUps && tank.activePowerUps.length > 0) {
@@ -952,10 +935,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     if (tank.chassis === 'phantom-weaver') {
         // Phantom Weaver Visuals
-        const primary = tank.color || '#a855f7';
+        const tankColor = tank.color || '#a855f7';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 20);
         const dark = '#1c1917';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 15;
         
         ctx.fillStyle = cFill(dark);
@@ -986,10 +970,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (tank.chassis === 'titan-ogre') {
         // Titan Ogre Visuals
-        const primary = tank.color || '#166534';
+        const tankColor = tank.color || '#166534';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 25);
         const dark = '#020617';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 10;
         
         ctx.fillStyle = cFill(dark);
@@ -1017,10 +1002,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (tank.chassis === 'volt-strider') {
         // Volt Strider Visuals
-        const primary = tank.color || '#eab308';
+        const tankColor = tank.color || '#eab308';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 25);
         const dark = '#1c1917';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 15;
         
         ctx.fillStyle = cFill(dark);
@@ -1054,10 +1040,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (tank.chassis === 'inferno-cobra') {
         // Inferno Cobra Visuals
-        const primary = tank.color || '#ef4444';
+        const tankColor = tank.color || '#ef4444';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 25);
         const dark = '#1c1917';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 15;
         
         ctx.fillStyle = cFill(dark);
@@ -1084,10 +1071,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (tank.chassis === 'crystal-vanguard') {
         // Crystal Vanguard Visuals
-        const primary = tank.color || '#06b6d4';
+        const tankColor = tank.color || '#06b6d4';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 25);
         const dark = '#1c1917';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 15;
         
         ctx.fillStyle = cFill(dark);
@@ -1125,10 +1113,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (tank.chassis === 'rogue-scout') {
         // --- REMASTERED ROGUE SCOUT ---
-        const primary = tank.color || '#FF003C';
+        const tankColor = tank.color || '#FF003C';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 20);
         const dark = '#1c1917';
         
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 15;
 
         // Sharper, more aggressive delta
@@ -1167,10 +1156,11 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else if (isPlayer && (!tank.chassis || tank.chassis === 'vector-01')) {
         // --- VECTOR-01 (Standard Hover Tank) ---
-        const primary = tank.color || '#00F0FF';
+        const tankColor = tank.color || '#00F0FF';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 20);
         const dark = '#020617';
-
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 10;
         
         // ... Auras logic handled above ...
@@ -1293,11 +1283,12 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
 
     } else {
         // --- IRON BASTION / ENEMIES ---
-        const primary = tank.color || '#f97316';
+        const tankColor = tank.color || '#f97316';
+        const primary = getStyle(ctx, tankColor, tank.secondaryColor, tank.colorStyle, 25);
         const dark = '#1c1917'; 
         const metal = '#44403c';
-
-        ctx.shadowColor = isHit ? '#ffffff' : primary;
+        
+        ctx.shadowColor = isHit ? '#ffffff' : tankColor;
         ctx.shadowBlur = isHit ? 20 : 5;
 
         if (tank.tier === 'intermediate' || tank.chassis === 'iron-bastion') {
@@ -1378,7 +1369,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             if (!isHit) {
                 ctx.fillStyle = primary;
                 ctx.shadowBlur = 10;
-                ctx.shadowColor = primary;
+                ctx.shadowColor = tankColor;
                 ctx.fillRect(-12, 6, 4, 4);
                 ctx.fillRect(-12, -10, 4, 4);
                 ctx.shadowBlur = 0; 
@@ -1455,6 +1446,7 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
     const isPlayer = proj.ownerId === 'player';
     const coreColor = '#ffffff';
     const glowColor = proj.color || (isPlayer ? '#00F0FF' : '#ef4444');
+    const style = getStyle(ctx, glowColor, proj.secondaryColor, proj.colorStyle, 10);
     
     if (proj.isHoming) {
         ctx.scale(1.2, 1.2);
@@ -1466,7 +1458,7 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
             ctx.restore(); return;
         }
         ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(-25, 0); ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(200, 200, 200, 0.5)'; ctx.stroke();
-        ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(0, -3); ctx.lineTo(-6, -3); ctx.lineTo(-6, 3); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = style; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(0, -3); ctx.lineTo(-6, -3); ctx.lineTo(-6, 3); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(-6, -3); ctx.lineTo(-10, -5); ctx.lineTo(-8, 0); ctx.lineTo(-10, 5); ctx.lineTo(-6, 3); ctx.fill();
         ctx.fillStyle = '#fbbf24'; ctx.shadowColor = '#f59e0b'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(-8, 0, 2, 0, Math.PI*2); ctx.fill();
         ctx.restore(); return;
@@ -1474,10 +1466,10 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
 
     ctx.shadowBlur = 15; ctx.shadowColor = glowColor;
     const pulse = 1 + Math.sin(Date.now() * 0.02) * 0.1; ctx.scale(pulse, pulse);
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-20, 0); ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = glowColor; ctx.globalAlpha = 0.6; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-20, 0); ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = style; ctx.globalAlpha = 0.6; ctx.stroke();
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = coreColor; ctx.beginPath(); ctx.ellipse(0, 0, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = glowColor; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = style; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
 }
 
@@ -1840,10 +1832,58 @@ export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone
                  }
              }
              ctx.stroke();
-
+             
              // Core Heat
              ctx.fillStyle = `rgba(185, 28, 28, ${pulse * 0.5})`;
              ctx.beginPath(); ctx.arc(0, 0, zone.radius * 0.8, 0, Math.PI*2); ctx.fill();
+        } else if (zone.type === 'poison') {
+             // Poison Gas Cloud
+             const pulse = 0.5 + Math.sin(now * 0.002) * 0.2;
+             
+             // 1. Base Cloud Gradient
+             const grad = ctx.createRadialGradient(0, 0, zone.radius * 0.2, 0, 0, zone.radius);
+             grad.addColorStop(0, `rgba(16, 185, 129, ${0.4 + pulse * 0.2})`); // Emerald-500
+             grad.addColorStop(0.6, `rgba(16, 185, 129, ${0.2 + pulse * 0.1})`);
+             grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+             
+             ctx.fillStyle = grad;
+             ctx.beginPath();
+             ctx.arc(0, 0, zone.radius, 0, Math.PI*2);
+             ctx.fill();
+             
+             // 2. Swirling Particles
+             const numParticles = 8;
+             ctx.fillStyle = '#34d399'; // Emerald-400
+             for(let i=0; i<numParticles; i++) {
+                 const angle = (now * 0.001) + (i * Math.PI * 2 / numParticles);
+                 const r = zone.radius * 0.6 * (0.8 + Math.sin(now * 0.003 + i) * 0.2);
+                 const x = Math.cos(angle) * r;
+                 const y = Math.sin(angle) * r;
+                 const size = 4 + Math.sin(now * 0.005 + i) * 2;
+                 
+                 ctx.globalAlpha = 0.6;
+                 ctx.beginPath();
+                 ctx.arc(x, y, size, 0, Math.PI*2);
+                 ctx.fill();
+             }
+             
+             // 3. Rising Bubbles/Mist
+             const numBubbles = 5;
+             ctx.strokeStyle = '#6ee7b7'; // Emerald-300
+             ctx.lineWidth = 1;
+             for(let i=0; i<numBubbles; i++) {
+                 const offset = (now * 0.02 + i * 100) % 100;
+                 const y = -zone.radius + offset;
+                 const x = Math.sin(now * 0.005 + i) * (zone.radius * 0.5);
+                 const alpha = 1 - (offset / 100);
+                 
+                 if (Math.abs(x) < zone.radius && Math.abs(y) < zone.radius) {
+                     ctx.globalAlpha = alpha * 0.5;
+                     ctx.beginPath();
+                     ctx.arc(x, y, 2 + i, 0, Math.PI*2);
+                     ctx.stroke();
+                 }
+             }
         } else if (zone.type === 'fire') {
              const pulse = 0.8 + Math.sin(now * 0.01) * 0.2;
              const flicker = Math.random() * 0.2 + 0.8;
@@ -1872,6 +1912,46 @@ export function drawEffectZones(ctx: CanvasRenderingContext2D, zones: EffectZone
                  ctx.lineTo(px + size/2, py + size);
                  ctx.closePath();
                  ctx.fill();
+             }
+        } else if (zone.type === 'conductive') {
+             // Electric Field
+             const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
+             
+             // Base Glow
+             const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, zone.radius);
+             grad.addColorStop(0, `rgba(14, 165, 233, ${0.3 * pulse})`); // Sky-500
+             grad.addColorStop(0.8, `rgba(14, 165, 233, ${0.1 * pulse})`);
+             grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+             ctx.fillStyle = grad;
+             ctx.beginPath(); ctx.arc(0, 0, zone.radius, 0, Math.PI*2); ctx.fill();
+             
+             // Outer Ring
+             ctx.strokeStyle = `rgba(14, 165, 233, ${0.5 + pulse})`;
+             ctx.lineWidth = 2;
+             ctx.setLineDash([10, 15]);
+             ctx.rotate(now * 0.001);
+             ctx.beginPath(); ctx.arc(0, 0, zone.radius, 0, Math.PI*2); ctx.stroke();
+             ctx.setLineDash([]);
+             
+             // Arcs
+             const numArcs = 4;
+             ctx.strokeStyle = '#38bdf8'; // Sky-400
+             ctx.lineWidth = 1.5;
+             for(let i=0; i<numArcs; i++) {
+                 if (Math.random() > 0.3) continue;
+                 const angle1 = Math.random() * Math.PI * 2;
+                 const angle2 = angle1 + (Math.random() * 0.5 + 0.2);
+                 const r1 = zone.radius * Math.random();
+                 const r2 = zone.radius * Math.random();
+                 
+                 ctx.beginPath();
+                 ctx.moveTo(Math.cos(angle1) * r1, Math.sin(angle1) * r1);
+                 // Jagged line
+                 const midX = (Math.cos(angle1) * r1 + Math.cos(angle2) * r2) / 2 + (Math.random() - 0.5) * 20;
+                 const midY = (Math.sin(angle1) * r1 + Math.sin(angle2) * r2) / 2 + (Math.random() - 0.5) * 20;
+                 ctx.lineTo(midX, midY);
+                 ctx.lineTo(Math.cos(angle2) * r2, Math.sin(angle2) * r2);
+                 ctx.stroke();
              }
         }
         ctx.restore();

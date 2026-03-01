@@ -2,7 +2,7 @@
 import React from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAudio } from '../contexts/AudioContext';
-import { ControlScheme, Language, Screen } from '../types';
+import { ControlScheme, Language, Screen, ColorStyle } from '../types';
 import ToggleSwitch from './common/ToggleSwitch';
 import SegmentedControl from './common/SegmentedControl';
 import Select from './common/Select';
@@ -116,6 +116,55 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ goBack, navigateTo }) => {
               <ToggleSwitch 
                 checked={settings.screenShake}
                 onChange={(checked) => handleSettingChange('screenShake', checked)}
+              />
+            </div>
+          </Fieldset>
+
+          {/* Visual Customization Section */}
+          <Fieldset legend="Visual Customization">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              <div className="space-y-4">
+                <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block">Primary Color</label>
+                <div className="flex items-center gap-4">
+                  <input 
+                    type="color" 
+                    value={settings.playerColor}
+                    onChange={(e) => handleSettingChange('playerColor', e.target.value)}
+                    className="w-12 h-12 bg-transparent border border-white/20 rounded cursor-pointer"
+                  />
+                  <input 
+                    type="text" 
+                    value={settings.playerColor}
+                    onChange={(e) => handleSettingChange('playerColor', e.target.value)}
+                    className="flex-1 bg-white/5 border border-white/10 p-2 font-mono text-xs text-white uppercase"
+                  />
+                </div>
+              </div>
+              <div className="space-y-4">
+                <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block">Secondary Color</label>
+                <div className="flex items-center gap-4">
+                  <input 
+                    type="color" 
+                    value={settings.playerSecondaryColor}
+                    onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
+                    className="w-12 h-12 bg-transparent border border-white/20 rounded cursor-pointer"
+                  />
+                  <input 
+                    type="text" 
+                    value={settings.playerSecondaryColor}
+                    onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
+                    className="flex-1 bg-white/5 border border-white/10 p-2 font-mono text-xs text-white uppercase"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block mb-3">Color Style</label>
+              <SegmentedControl
+                name="colorStyle"
+                options={['solid', 'gradient', 'neon', 'chrome']}
+                value={settings.playerColorStyle}
+                onChange={(val) => handleSettingChange('playerColorStyle', val as ColorStyle)}
               />
             </div>
           </Fieldset>

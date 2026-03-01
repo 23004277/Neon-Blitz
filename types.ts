@@ -3,7 +3,7 @@ export type ChassisType = 'vector-01' | 'rogue-scout' | 'iron-bastion' | 'goliat
 
 // FIX: Removed self-import which was causing declaration conflicts.
 // FIX: Replaced incorrect component code with all necessary type definitions for the application.
-export type Screen = 'loading' | 'main-menu' | 'settings' | 'difficulty-selection' | 'game' | 'duel-selection' | 'sandbox-selection';
+export type Screen = 'loading' | 'main-menu' | 'settings' | 'difficulty-selection' | 'game' | 'duel-selection' | 'sandbox-selection' | 'hangar';
 
 export enum Difficulty {
   Easy = 'Easy',
@@ -50,6 +50,8 @@ export interface GameConfig {
   sandboxConfig?: SandboxConfig;
 }
 
+export type ColorStyle = 'solid' | 'gradient' | 'neon' | 'chrome';
+
 export interface Settings {
   sound: boolean;
   music: boolean;
@@ -58,6 +60,13 @@ export interface Settings {
   difficulty: Difficulty;
   controls: ControlScheme;
   language: Language;
+  playerName: string;
+  playerColor: string;
+  playerSecondaryColor: string;
+  playerColorStyle: ColorStyle;
+  credits: number;
+  unlockedChassis: ChassisType[];
+  equippedChassis: ChassisType;
 }
 
 export interface ChatMessage {
@@ -90,6 +99,7 @@ export interface Projectile {
   isHoming?: boolean;
   targetId?: string;
   turnRate?: number;
+  maxLifetime?: number; // New: Max duration before self-destruct
   damage?: number;
   blastRadius?: number; // Added for AOE
   isFrozen?: boolean;
@@ -97,7 +107,10 @@ export interface Projectile {
   isBossOrb?: boolean;
   isVampiric?: boolean; // New: Heals owner on hit
   isNapalm?: boolean; // New: Creates fire zone on impact
+  isPoisonContainer?: boolean; // New: Creates poison zone on impact
   color?: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
 }
 
 export type PowerUpType = 'dualCannon' | 'shield' | 'regensule' | 'reflectorField' | 'lifeLeech' | 'homingMissiles';
@@ -117,13 +130,15 @@ export interface Animation {
   position: Vector;
   angle?: number;
   color?: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
   width?: number;
   height?: number;
   opacity?: number;
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'omniBarrage' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'poisonGas' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard' | 'lightningDash' | 'emOverload' | 'staticVeil' | 'voltLock' | 'overdriveCore' | 'conductiveField' | 'counterSurge';
 
 export interface Ability {
   id: AbilityId;
@@ -157,11 +172,32 @@ export interface StunStatusEffect {
   duration: number;
 }
 
-export type StatusEffect = PoisonStatusEffect | StunStatusEffect;
+export interface ConductiveStatusEffect {
+  type: 'conductive';
+  ownerId: string;
+  startTime: number;
+  duration: number;
+}
+
+export interface VoltLockStatusEffect {
+  type: 'voltLock';
+  ownerId: string;
+  startTime: number;
+  duration: number;
+}
+
+export type StatusEffect = PoisonStatusEffect | StunStatusEffect | ConductiveStatusEffect | VoltLockStatusEffect;
 
 
-export interface Tank {
+export interface RenderableEntity {
   id: string;
+  position: Vector;
+  color: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
+}
+
+export interface Tank extends RenderableEntity {
   name: string;
   type: 'player' | 'enemy';
   status: 'spawning' | 'active' | 'dying' | 'dead';
@@ -177,6 +213,8 @@ export interface Tank {
   health: number;
   maxHealth: number;
   color: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
   score: number;
   kills: number;
   deaths: number;
@@ -192,6 +230,19 @@ export interface Tank {
   statusEffects?: StatusEffect[];
   homingMissileCount?: number;
   damageConverterCharge?: number; // Stores energy from damage taken
+  abilities?: Ability[];
+  
+  // Volt Strider Properties
+  dashCharges?: number;
+  maxDashCharges?: number;
+  isStealthed?: boolean;
+  stealthStartTime?: number;
+  isParrying?: boolean;
+  parryStartTime?: number;
+  storedEnergy?: number;
+  voltLockTargetId?: string;
+  isExhausted?: boolean;
+  exhaustionStartTime?: number;
   
   // AI Properties
   lastFireTime?: number;
@@ -213,39 +264,41 @@ export interface Telegraph {
   createdAt: number;
   duration: number;
   color?: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
   targetPosition?: Vector; // For lines
 }
 
 export interface EffectZone {
   id: string;
-  type: 'chrono' | 'poison' | 'fissure' | 'fire';
+  type: 'chrono' | 'poison' | 'fissure' | 'fire' | 'conductive';
   position: Vector;
   radius: number;
   createdAt: number;
   duration: number;
   lastTick?: number; // For DoT logic
+  ownerId?: string; // Added to track who created the zone
 }
 
-export interface Minion {
-  id: string;
-  position: Vector;
+export interface Minion extends RenderableEntity {
   angle: number; // Gun angle
   size: { width: number; height: number };
   health: number;
   maxHealth: number;
   status: 'spawning' | 'active' | 'dying' | 'dead';
   spawnTime: number;
+  color: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
   deathTime?: number;
   lastHitTime?: number;
   lastFireTime?: number;
   statusEffects?: StatusEffect[];
 }
 
-export interface Boss {
-  id: string;
+export interface Boss extends RenderableEntity {
   name: string;
   bossType: 'goliath' | 'viper' | 'sentinel';
-  position: Vector;
   velocity: Vector; // Added for movement physics
   angle: number; // Body angle
   patrolTarget?: Vector;
@@ -257,14 +310,40 @@ export interface Boss {
   spawnTime?: number;
   deathTime?: number;
   color: string;
+  secondaryColor?: string;
+  colorStyle?: ColorStyle;
   lastHitTime?: number;
   lastFireTime?: number;
   hasUsedLastStand?: boolean;
   statusEffects?: StatusEffect[];
   shieldHealth?: number; // Added for consistency
   shieldSegments?: { angle: number, health: number, maxHealth: number, active: boolean }[]; // For Sentinel
+  abilities?: Ability[]; // Added for unified ability system
+  
+  // Common properties for Tank compatibility
+  type?: 'player' | 'enemy';
+  score?: number;
+  kills?: number;
+  deaths?: number;
+  chassis?: ChassisType;
+
+  // Volt Strider Properties (for Boss compatibility)
+  dashCharges?: number;
+  maxDashCharges?: number;
+  isStealthed?: boolean;
+  stealthStartTime?: number;
+  isParrying?: boolean;
+  parryStartTime?: number;
+  storedEnergy?: number;
+  voltLockTargetId?: string;
+  isExhausted?: boolean;
+  exhaustionStartTime?: number;
+  isInvulnerable?: boolean;
+  critChance?: number;
+  critMultiplier?: number;
+
   attackState: {
-    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'omniBarrage';
+    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'poisonGas';
     phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering' | 'charging';
     phaseStartTime: number;
     attackData?: {
@@ -327,6 +406,13 @@ export interface CutsceneState {
   targetCamera: { x: number, y: number, zoom: number };
 }
 
+export interface UpgradeOption {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
 // Minimal state for the React Render loop (UI only)
 export interface UIState {
     playerHealth: number;
@@ -343,4 +429,6 @@ export interface UIState {
     duelWon: boolean;
     abilities: Ability[];
     damageConverterCharge: number;
+    showUpgradeScreen?: boolean;
+    availableUpgrades?: UpgradeOption[];
 }

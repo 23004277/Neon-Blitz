@@ -31,7 +31,7 @@ const THEMES: Record<string, { main: string; glow: string; bg: string }> = {
   teslaStorm: { main: "#06b6d4", glow: "rgba(6,182,212,0.8)", bg: "rgba(6,182,212,0.15)" }, // Cyan
   // Boss Moves (Red Themed)
   shockwave: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
-  omniBarrage: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
+  poisonGas: { main: "#10b981", glow: "rgba(16,185,129,0.8)", bg: "rgba(16,185,129,0.15)" }, // Green
   mortarVolley: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
   laserSweep: { main: "#ef4444", glow: "rgba(239,68,68,0.8)", bg: "rgba(239,68,68,0.15)" }, 
   // Goliath Prime Expansion
@@ -52,7 +52,7 @@ const Icon = memo(({ name }: { name: string }) => {
     "Tesla Storm": <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />,
     // Boss Icons
     "Shockwave": <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-1-8h2v-2h-2v2zm0 4h2v-2h-2v2z" />, // Simple circle alert icon
-    "Omni Barrage": <path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" />, // Star/Burst shape
+    "Poison Gas": <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />, // Warning/Biohazard-ish
     "Mortar Volley": <path d="M12 3v18m-9-9h18" strokeWidth="2" strokeLinecap="round" />, // Target reticle
     "Laser Sweep": <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />, // Circle
     "Scatter Mines": <path d="M12 2l2.5 7h7.5l-6 4.5 2.5 7.5-6.5-4.5-6.5 4.5 2.5-7.5-6-4.5h7.5z" />, // Star shape

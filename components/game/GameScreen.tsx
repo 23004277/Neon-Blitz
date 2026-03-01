@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType, CutsceneState, KillFeedMessage, CombatText, Barrel, ChassisType } from '../../types';
+import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType, CutsceneState, KillFeedMessage, CombatText, Barrel, ChassisType, StatusEffect, PoisonStatusEffect, ConductiveStatusEffect } from '../../types';
 import { Difficulty } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAudio } from '../../contexts/AudioContext';
@@ -30,6 +30,7 @@ interface InternalGameState {
     player: TankType;
     enemies: TankType[];
     bosses: Boss[];
+    boss: Boss | null; // For backward compatibility and single boss tracking
     projectiles: Projectile[];
     powerUps: PowerUp[];
     animations: Animation[];
@@ -45,9 +46,12 @@ interface InternalGameState {
     mouse: Vector;
     screenShake: number;
     wave: number;
+    waveState: 'active' | 'cleared' | 'upgrading';
+    enemiesToSpawn: number;
     abilities: Ability[];
     activeAbilityId: string | null;
     lastPowerUpTime: number;
+    lastRandomPowerUpTime: number; // For random spawns
     lastEnemySpawnTime: number;
     lastBeamTick: number; // For Beam damage throttling
     lastBossBeamTick: number; // For Boss Laser damage
@@ -77,7 +81,8 @@ const initialPlayer: TankType = {
     health: 10, maxHealth: 10, color: '#00E0FF', score: 0, kills: 0, deaths: 0,
     damageConverterCharge: 0,
     critChance: 0.1,
-    critMultiplier: 2
+    critMultiplier: 2,
+    lastFireTime: 0
 };
 
 // Difficulty Configuration Helper
@@ -93,7 +98,10 @@ const getDifficultyConfig = (difficulty: Difficulty) => {
                 tierChance: 0.5, // 50% chance for intermediate
                 bossHpMultiplier: 1.5,
                 bossAggression: 1.5, 
-                aiTracking: 0.15 // Sharp turns
+                aiTracking: 0.15, // Sharp turns
+                aiAbilityChance: 0.005, // Chance per frame to use ability
+                aiAbilityCooldownMultiplier: 0.7, // 30% faster cooldowns
+                aiTacticalOptimization: 1.0 // Full tactical optimization
             };
         case Difficulty.Medium:
             return {
@@ -105,7 +113,10 @@ const getDifficultyConfig = (difficulty: Difficulty) => {
                 tierChance: 0.3,
                 bossHpMultiplier: 1.2,
                 bossAggression: 1.2,
-                aiTracking: 0.12
+                aiTracking: 0.12,
+                aiAbilityChance: 0.002,
+                aiAbilityCooldownMultiplier: 1.0,
+                aiTacticalOptimization: 0.5
             };
         case Difficulty.Easy:
         default:
@@ -118,7 +129,10 @@ const getDifficultyConfig = (difficulty: Difficulty) => {
                 tierChance: 0.1,
                 bossHpMultiplier: 1.0,
                 bossAggression: 1.0,
-                aiTracking: 0.08
+                aiTracking: 0.08,
+                aiAbilityChance: 0.0005,
+                aiAbilityCooldownMultiplier: 1.5, // 50% slower cooldowns
+                aiTacticalOptimization: 0.1
             };
     }
 };
@@ -143,9 +157,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     // Mutable Game State
     const game = useRef<InternalGameState>({
-        player: { ...initialPlayer, spawnTime: Date.now() },
+        player: { 
+            ...initialPlayer, 
+            name: settings.playerName || 'VECTOR_01',
+            color: settings.playerColor || '#00F0FF',
+            secondaryColor: settings.playerSecondaryColor,
+            colorStyle: settings.playerColorStyle,
+            chassis: config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis,
+            spawnTime: Date.now() 
+        },
         enemies: [],
         bosses: [],
+        boss: null,
         projectiles: [],
         powerUps: [],
         animations: [],
@@ -161,11 +184,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         mouse: { x: 0, y: 0 },
         screenShake: 0,
         wave: 1,
+        waveState: 'active',
+        enemiesToSpawn: 10,
         abilities: [
-           { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 }, { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 6000, cooldown: 12000, startTime: 0, chargeDuration: 1500 }, { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 }, { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 }, { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
+           { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 }, 
+           { id: (config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis) === 'goliath-prime' ? 'poisonGas' : 'cyberBeam', name: (config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis) === 'goliath-prime' ? 'Poison Gas' : 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 12000, startTime: 0, chargeDuration: 1000 }, 
+           { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 }, 
+           { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 }, 
+           { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
         ],
         activeAbilityId: null,
         lastPowerUpTime: Date.now(),
+        lastRandomPowerUpTime: Date.now(),
         lastEnemySpawnTime: Date.now(),
         lastBeamTick: 0,
         lastBossBeamTick: 0,
@@ -195,20 +225,90 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     const [uiState, setUiState] = useState<UIState>({
         playerHealth: 10, playerMaxHealth: 10, playerShield: 0, playerScore: 0, playerKills: 0,
-        wave: 1, enemiesRemaining: 0, gameOver: false, duelWon: false, abilities: [], damageConverterCharge: 0
+        wave: 1, enemiesRemaining: 0, gameOver: false, duelWon: false, abilities: [], damageConverterCharge: 0,
+        showUpgradeScreen: false, availableUpgrades: []
     });
 
     const [isSandboxPanelOpen, setIsSandboxPanelOpen] = useState(false);
 
     useEffect(() => {
+        const isStealthed = game.current.player.isStealthed;
+        const isOverdrive = game.current.abilities.find(a => a.id === 'overdriveCore' || a.id === 'overdrive')?.state === 'active';
+        
         if (uiState.gameOver) {
             audio.setGlobalFilter(600);
+        } else if (isStealthed) {
+            audio.setGlobalFilter(800); // Muffled sound in stealth
         } else if (uiState.playerHealth / uiState.playerMaxHealth < 0.3) {
             audio.setGlobalFilter(1200);
         } else {
             audio.setGlobalFilter(22000);
         }
-    }, [uiState.gameOver, uiState.playerHealth, uiState.playerMaxHealth, audio]);
+        
+        // Pitch modulation for Overdrive
+        if (isOverdrive) {
+            // This would require a global pitch setting in AudioContext, 
+            // but for now we can just ensure the overdrive loop is playing
+        }
+    }, [uiState.gameOver, uiState.playerHealth, uiState.playerMaxHealth, audio, uiState.abilities]); // Added abilities dependency
+
+    // --- UPGRADE SYSTEM ---
+    const generateUpgrades = () => {
+        const possibleUpgrades = [
+            { id: 'max_hp', name: 'Hull Reinforcement', description: '+5 Max HP, Heals 5 HP', icon: '🛡️' },
+            { id: 'speed', name: 'Thruster Overclock', description: '+10% Movement Speed', icon: '⚡' },
+            { id: 'damage', name: 'Weapon Calibration', description: '+15% Damage Output', icon: '💥' },
+            { id: 'fire_rate', name: 'Cooling Systems', description: '+15% Fire Rate', icon: '🔥' },
+            { id: 'crit', name: 'Targeting Computer', description: '+10% Crit Chance', icon: '🎯' },
+            { id: 'heal', name: 'Emergency Repair', description: 'Restore 100% HP', icon: '🔧' }
+        ];
+        // Shuffle and pick 3
+        return possibleUpgrades.sort(() => 0.5 - Math.random()).slice(0, 3);
+    };
+
+    const handleUpgradeSelect = (upgradeId: string) => {
+        const g = game.current;
+        const player = g.player;
+        
+        switch (upgradeId) {
+            case 'max_hp':
+                player.maxHealth += 5;
+                player.health = Math.min(player.maxHealth, player.health + 5);
+                break;
+            case 'speed':
+                // We'll need to store a speed multiplier on the player or just increase base speed
+                // Let's add speedMultiplier to TankType if it doesn't exist, or just use a custom property
+                (player as any).speedMultiplier = ((player as any).speedMultiplier || 1) + 0.1;
+                break;
+            case 'damage':
+                (player as any).damageMultiplier = ((player as any).damageMultiplier || 1) + 0.15;
+                break;
+            case 'fire_rate':
+                (player as any).fireRateMultiplier = ((player as any).fireRateMultiplier || 1) * 0.85; // lower is faster
+                break;
+            case 'crit':
+                player.critChance = (player.critChance || 0) + 0.1;
+                break;
+            case 'heal':
+                player.health = player.maxHealth;
+                break;
+        }
+        
+        // Start next wave
+        g.wave++;
+        g.enemiesToSpawn = 10 + (g.wave * 5); // 15, 20, 25...
+        g.waveState = 'active';
+        
+        setUiState(prev => ({
+            ...prev,
+            showUpgradeScreen: false,
+            wave: g.wave,
+            playerHealth: player.health,
+            playerMaxHealth: player.maxHealth
+        }));
+        
+        audio.play('uiClick');
+    };
 
     // --- HELPER FUNCTIONS ---
     const applyDamage = (target: TankType | Boss, amount: number, sourceId?: string) => {
@@ -219,7 +319,20 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
          if (target.id === 'player' && game.current.sandbox.godMode) return;
 
          let finalDamage = amount;
-         
+         let isCritical = false;
+
+         const attacker = sourceId === 'player' ? game.current.player : game.current.enemies.find(e => e.id === sourceId);
+
+         if (attacker) {
+             const dmgMult = (attacker as any).damageMultiplier || 1;
+             finalDamage *= dmgMult;
+
+             if (Math.random() < (attacker.critChance || 0)) {
+                isCritical = true;
+                finalDamage *= (attacker.critMultiplier || 1);
+             }
+         }
+
          // Shield Check
          if (target.shieldHealth && target.shieldHealth > 0) {
              target.shieldHealth -= amount;
@@ -253,9 +366,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                   // Boss Death
                   target.status = 'dead';
                   game.current.animations.push({ id: `b-die-${Date.now()}`, type: 'explosion', position: target.position, createdAt: Date.now(), duration: 1000, color: 'red' });
-                  audio.play('bossExplosion');
-                  audio.stopEngine('boss');
-                  setTimeout(() => { game.current.boss = null; }, 1000);
+                  audio.play('bossDefeated', target.position, game.current.player.position, { variation: false });
              }
          }
     };
@@ -361,7 +472,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         game.current.screenShake = Math.max(game.current.screenShake, 5);
         audio.stopEngine(e.id);
         
-        spawnPowerUp(e.position);
+        // Power-ups now spawn randomly in the update loop
     };
 
     // --- CINEMATIC SEQUENCER ---
@@ -531,7 +642,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  // REPLACE ABILITIES WITH EXPANDED BOSS MOVESET
                  game.current.abilities = [
                      { id: 'shockwave', name: 'Shockwave', keyBinding: 'Q', state: 'ready', duration: 500, cooldown: 5000, startTime: 0 },
-                     { id: 'omniBarrage', name: 'Omni Barrage', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 10000, startTime: 0, chargeDuration: 1500 }, // New replacement skill
+                     { id: 'poisonGas', name: 'Poison Gas', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 10000, startTime: 0 }, // New replacement skill
                      { id: 'mortarVolley', name: 'Mortar Volley', keyBinding: 'R', state: 'ready', duration: 1000, cooldown: 10000, startTime: 0 },
                      { id: 'laserSweep', name: 'Laser Sweep', keyBinding: 'F', state: 'ready', duration: 8500, cooldown: 15000, startTime: 0 }, // Matched to boss nerf duration
                      { id: 'scatterMines', name: 'Scatter Mines', keyBinding: 'T', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
@@ -561,19 +672,25 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                      { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'F', state: 'ready', duration: 6000, cooldown: 20000, startTime: 0 }
                  ];
              } else if (characterId === 'volt-strider') {
-                 game.current.player.maxHealth = 12;
-                 game.current.player.health = 12;
-                 game.current.player.size = { width: 38, height: 38 };
+                 game.current.player.maxHealth = 30;
+                 game.current.player.health = 30;
+                 game.current.player.size = { width: 45, height: 45 };
                  game.current.player.color = '#eab308';
                  game.current.player.chassis = 'volt-strider';
                  game.current.player.tier = 'intermediate';
+                 game.current.player.maxDashCharges = 4;
+                 game.current.player.dashCharges = 4;
                  game.current.abilities = [
-                     { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Q', state: 'ready', duration: 6000, cooldown: 20000, startTime: 0 },
-                     { id: 'chainLightning', name: 'Chain Lightning', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 8000, startTime: 0 },
-                     { id: 'overdrive', name: 'Overdrive', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 15000, startTime: 0 },
-                     { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'F', state: 'ready', duration: 6000, cooldown: 12000, startTime: 0, chargeDuration: 1500 }
+                     { id: 'lightningDash', name: 'Lightning Dash', keyBinding: 'Q', state: 'ready', duration: 300, cooldown: 4000, startTime: 0 },
+                     { id: 'emOverload', name: 'EM Overload', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
+                     { id: 'staticVeil', name: 'Static Veil', keyBinding: 'R', state: 'ready', duration: 2000, cooldown: 15000, startTime: 0 },
+                     { id: 'voltLock', name: 'Volt Lock', keyBinding: 'F', state: 'ready', duration: 5000, cooldown: 10000, startTime: 0 },
+                     { id: 'conductiveField', name: 'Conductive Field', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 },
+                     { id: 'overdriveCore', name: 'Overdrive Core', keyBinding: 'U', state: 'ready', duration: 8000, cooldown: 30000, startTime: 0 },
+                     { id: 'counterSurge', name: 'Counter', keyBinding: 'Space', state: 'ready', duration: 400, cooldown: 2250, startTime: 0 }
                  ];
-             } else if (characterId === 'inferno-cobra') {
+             }
+ else if (characterId === 'inferno-cobra') {
                  game.current.player.maxHealth = 15;
                  game.current.player.health = 15;
                  game.current.player.size = { width: 42, height: 42 };
@@ -647,7 +764,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     game.current.player.deathTime = Date.now();
                     game.current.player.status = 'dead';
                     setUiState(prev => ({ ...prev, gameOver: true }));
-                    audio.play('explosion');
+                    audio.play('playerDeath', game.current.player.position, game.current.player.position, { variation: false });
                     audio.stopMusic();
                     // Stop any active loops
                     audio.stop('overdriveLoop');
@@ -754,7 +871,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             const pickupRadius = player.bossType === 'goliath' ? 80 : player.size.width; // Larger pickup radius for Goliath
             if (dist < pickupRadius) {
                 applyPowerUp(player, p.type);
-                audio.play('abilityReady');
+                audio.play(`powerUp_${p.type}` as any, player.position, player.position, { variation: true });
                 game.current.damageNumbers.push({
                     id: `pup-text-${Date.now()}`,
                     text: p.type.toUpperCase(),
@@ -824,7 +941,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     const dist = Math.hypot(target.position.x - t.position.x, target.position.y - t.position.y);
                     if (dist < 60) {
                         detonated = true;
-                        audio.play('rocketExplosion', t.position.x);
+                        audio.play('mineExplosion', t.position, g.player.position, { variation: true });
                         g.animations.push({ id: `mine-exp-${now}-${t.id}`, type: 'explosion', position: t.position, createdAt: now, duration: 600, color: '#f97316' });
                         g.screenShake += 5;
 
@@ -839,11 +956,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                                  
                                  if (aoeTarget.health <= 0) {
                                      aoeTarget.status = 'dead';
-                                     if ('type' in aoeTarget && aoeTarget.type === 'enemy') handleEnemyDeath(aoeTarget);
+                                     if ('type' in aoeTarget && aoeTarget.type === 'enemy') handleEnemyDeath(aoeTarget as TankType);
                                      else if ('bossType' in aoeTarget) {
                                           g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: aoeTarget.position, createdAt: now, duration: 1000, color: 'red' });
-                                          audio.play('bossExplosion');
-                                          audio.stopEngine(aoeTarget.id);
+                                          audio.play('bossDefeated', aoeTarget.position, g.player.position, { variation: false });
                                           setTimeout(() => { 
                                               game.current.bosses = game.current.bosses.filter(b => b.id !== aoeTarget.id); 
                                           }, 1000);
@@ -859,33 +975,75 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             return true;
         });
         
-        // --- PROCESS EFFECT ZONES (Fissure & Fire Damage) ---
+        // --- PROCESS EFFECT ZONES (Fissure, Fire & Poison & Conductive) ---
         g.effectZones.forEach(zone => {
-             if (zone.type === 'fissure' || zone.type === 'fire') {
+             if (zone.type === 'fissure' || zone.type === 'fire' || zone.type === 'poison' || zone.type === 'conductive') {
                  if (!zone.lastTick || now - zone.lastTick > 500) { // Tick every 500ms
                      zone.lastTick = now;
                      // Damage enemies in zone
-                     const targets = [...g.enemies, ...g.bosses].filter(tgt => tgt && tgt.status === 'active');
+                     const targets = [...g.enemies, ...g.bosses, g.player].filter(tgt => tgt && tgt.status === 'active');
                      targets.forEach(tgt => {
                          if (!tgt) return;
+                         
+                         // Skip if target is the owner (optional, but usually good for gameplay)
+                         // Or if owner is player, damage enemies/bosses. If owner is enemy/boss, damage player.
+                         if (zone.ownerId === 'player' && tgt.id === 'player') return;
+                         if (zone.ownerId !== 'player' && tgt.id !== 'player') return;
+
                          const d = Math.hypot(tgt.position.x - zone.position.x, tgt.position.y - zone.position.y);
                          if (d < zone.radius) {
-                             const dmg = zone.type === 'fire' ? 8 : 5;
-                             tgt.health -= dmg;
-                             tgt.lastHitTime = now;
-                             g.damageNumbers.push({id: `${zone.type}-dmg-${now}-${tgt.id}`, text: dmg.toString(), position: {...tgt.position, y: tgt.position.y - 20}, createdAt: now, duration: 800, color: zone.type === 'fire' ? '#ef4444' : '#f97316'});
-                             if (tgt.health <= 0) {
-                                 tgt.status = 'dead';
-                                 if ('type' in tgt && tgt.type === 'enemy') handleEnemyDeath(tgt);
-                                 else if ('bossType' in tgt) {
-                                      g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: tgt.position, createdAt: now, duration: 1000, color: 'red' });
-                                      audio.play('bossExplosion');
-                                      audio.stopEngine(tgt.id);
-                                      setTimeout(() => { 
-                                          game.current.bosses = game.current.bosses.filter(b => b.id !== tgt.id); 
-                                      }, 1000);
+                             if (zone.type === 'conductive') {
+                                 // Apply Conductive Status
+                                 if (!tgt.statusEffects) tgt.statusEffects = [];
+                                 // Refresh if exists
+                                 const existing = tgt.statusEffects.find(e => e.type === 'conductive');
+                                 if (existing) {
+                                     existing.startTime = now;
+                                     existing.duration = 2000;
+                                 } else {
+                                     tgt.statusEffects.push({
+                                         type: 'conductive',
+                                         ownerId: zone.ownerId || 'player',
+                                         startTime: now,
+                                         duration: 2000
+                                     });
                                  }
+                                 // Visual feedback
+                                 if (Math.random() < 0.3) {
+                                     game.current.animations.push({ id: `zap-${now}-${tgt.id}`, type: 'lightning', position: zone.position, targetPosition: tgt.position, createdAt: now, duration: 200, color: '#0ea5e9' });
+                                 }
+                                 return; // No direct damage from field, just status
                              }
+
+                             let dmg = zone.type === 'fire' ? 8 : 5;
+                             
+                             if (zone.type === 'poison') {
+                                 // Handle Stacking
+                                 if (!tgt.statusEffects) tgt.statusEffects = [];
+                                 const existing = tgt.statusEffects.find(e => e.type === 'poison') as PoisonStatusEffect;
+                                 let stacks = 1;
+                                 
+                                 if (existing) {
+                                     existing.stacks = Math.min(10, existing.stacks + 1);
+                                     existing.duration = 2000;
+                                     existing.lastApplied = now;
+                                     stacks = existing.stacks;
+                                 } else {
+                                     tgt.statusEffects.push({
+                                         type: 'poison',
+                                         ownerId: zone.ownerId || 'environment',
+                                         stacks: 1,
+                                         lastApplied: now,
+                                         duration: 2000,
+                                         tickDamage: 0,
+                                         tickInterval: 500,
+                                         lastTickTime: now
+                                     });
+                                 }
+                                 dmg = 4 + (stacks - 1) * 2; // Base 4 + 2 per stack
+                             }
+                             
+                             applyDamage(tgt as TankType | Boss, dmg, zone.ownerId || 'environment');
                          }
                      });
                  }
@@ -912,12 +1070,32 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     if (config.sandboxConfig.characterId === 'rogue-scout') baseSpeed = 5.0;
                     else if (config.sandboxConfig.characterId === 'iron-bastion') baseSpeed = 2.0;
                     else if (config.sandboxConfig.characterId === 'goliath-prime') baseSpeed = 1.5;
+                    else if (config.sandboxConfig.characterId === 'volt-strider') baseSpeed = 3.5;
                 }
                 
+                // Volt Strider specific modifiers
+                const emOverloadActive = g.abilities.find(a => a.id === 'emOverload' && a.state === 'active');
+                if (player.chassis === 'volt-strider') {
+                    if (emOverloadActive) baseSpeed *= 0.5;
+                    if (player.isExhausted) baseSpeed *= 0.6;
+                    if (player.voltLockTargetId) {
+                        const target = [...g.enemies, ...g.bosses].find(t => t.id === player.voltLockTargetId);
+                        if (target) {
+                            // Only boost if moving toward target
+                            const toTargetX = target.position.x - player.position.x;
+                            const toTargetY = target.position.y - player.position.y;
+                            const dot = dx * toTargetX + dy * toTargetY;
+                            if (dot > 0) baseSpeed *= 1.3; // Speed toward marked target
+                        }
+                    }
+                }
+
                 // Boost speed if Overdrive chassis
                 if (player.chassis === 'goliath-prime-overdrive') baseSpeed = 2.5;
 
-                const speed = baseSpeed * (g.abilities.find(a=>a.id==='overdrive')?.state === 'active' ? 1.5 : 1) * timeScale;
+                const speedMult = ((player as any).speedMultiplier || 1);
+                const overdriveActive = g.abilities.find(a => a.id === 'overdrive' || a.id === 'overdriveCore')?.state === 'active';
+                const speed = baseSpeed * speedMult * (overdriveActive ? 1.5 : 1) * timeScale;
                 player.position.x += dx * speed;
                 player.position.y += dy * speed;
                 player.velocity = { x: dx * speed, y: dy * speed };
@@ -943,6 +1121,32 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (!sweepActive) {
                 player.turretAngle = Math.atan2(g.mouse.y - player.position.y, g.mouse.x - player.position.x) * (180/Math.PI);
             }
+            
+            // Auto-fire / Melee
+            if (player.chassis === 'volt-strider') {
+                // Melee M1
+                if (g.keys['mouse0']) {
+                    const fireRateMult = (player as any).fireRateMultiplier || 1;
+                    const fireInterval = 400 * fireRateMult;
+                    if (!player.lastFireTime || now - player.lastFireTime > fireInterval) {
+                        performMeleeAttack(player);
+                        player.lastFireTime = now;
+                    }
+                }
+                // Space for Parry
+                if (g.keys[' '] || g.keys['space']) {
+                    triggerAbility('counterSurge');
+                }
+            } else {
+                if (g.keys[' '] || g.keys['space']) {
+                    const fireRateMult = (player as any).fireRateMultiplier || 1;
+                    const fireInterval = 250 * fireRateMult; // Base fire interval is 250ms
+                    if (!player.lastFireTime || now - player.lastFireTime > fireInterval) {
+                        fireProjectile(player, player.turretAngle);
+                        player.lastFireTime = now;
+                    }
+                }
+            }
         }
 
         if (player.status === 'active') {
@@ -950,39 +1154,143 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
 
         // 2. Abilities & Projectiles & Boss & AI
-        updateAbilities(now, timeScale);
-        updateHomingProjectiles(dt, g.enemies, g.boss);
+        updateAbilities(g.player, now, timeScale);
+        g.enemies.forEach(e => updateAbilities(e, now, timeScale));
+        if (g.boss) updateAbilities(g.boss as any, now, timeScale);
+        updateHomingProjectiles(dt, g.enemies, g.bosses);
         
-        g.projectiles.forEach(p => {
+        // Update Projectiles & Collisions
+        g.projectiles = g.projectiles.filter(p => {
+            // Poison Gas Impact
+            if (p.isPoisonContainer) {
+                // Check collision with walls or enemies or max range
+                let hit = false;
+                if (p.position.x <= 0 || p.position.x >= ARENA_WIDTH || p.position.y <= 0 || p.position.y >= ARENA_HEIGHT) hit = true;
+                
+                // Check enemy collision
+                const targets = p.ownerId === 'player' ? [...g.enemies, ...g.bosses] : [g.player];
+                for (const t of targets) {
+                    if (t && t.status === 'active' && Math.hypot(t.position.x - p.position.x, t.position.y - p.position.y) < (t.size.width/2 + 10)) {
+                        hit = true;
+                        break;
+                    }
+                }
+
+                if (hit || (now - p.createdAt > 800)) { // Max range/time
+                    // Create Poison Cloud
+                    g.effectZones.push({
+                        id: `poison-cloud-${now}-${Math.random()}`,
+                        type: 'poison',
+                        position: { ...p.position },
+                        radius: 120,
+                        createdAt: now,
+                        duration: 5000, // 5 seconds
+                        lastTick: now,
+                        ownerId: p.ownerId
+                    });
+                    
+                    audio.play('poisonGasHit', p.position, g.player.position);
+                    g.animations.push({
+                        id: `poison-burst-${now}`,
+                        type: 'explosion',
+                        position: p.position,
+                        createdAt: now,
+                        duration: 600,
+                        color: '#10b981',
+                        width: 100
+                    });
+                    return false;
+                }
+            }
+
             p.position.x += p.velocity.x * timeScale;
             p.position.y += p.velocity.y * timeScale;
-        });
-        g.projectiles = g.projectiles.filter(p => {
-             if (p.id.startsWith('flame-') && now - p.createdAt > 400) return false;
-             return p.position.x > 0 && p.position.x < ARENA_WIDTH && p.position.y > 0 && p.position.y < ARENA_HEIGHT;
+            
+            // Lifetime Check
+            if (p.maxLifetime && now - p.createdAt > p.maxLifetime) {
+                if (p.blastRadius) {
+                    // Trigger explosion for missiles on timeout
+                    g.animations.push({
+                        id: `timeout-exp-${p.id}`,
+                        type: 'explosion',
+                        position: { ...p.position },
+                        createdAt: now,
+                        duration: 600,
+                        color: p.color || '#ef4444',
+                        width: p.blastRadius * 2
+                    });
+                    audio.play('explosion', p.position, g.player.position);
+                }
+                return false;
+            }
+
+            if (p.id.startsWith('flame-') && now - p.createdAt > 400) return false;
+            return p.position.x > 0 && p.position.x < ARENA_WIDTH && p.position.y > 0 && p.position.y < ARENA_HEIGHT;
         });
 
+        // Update all bosses
+        g.bosses.forEach(b => {
+            updateBoss(b, player, now, timeScale);
+        });
+        
         if (g.boss) {
-            updateBoss(g.boss, player, now, timeScale);
             const bossSpeed = Math.hypot(g.boss.velocity.x, g.boss.velocity.y);
             audio.updateEngine('boss', 'boss', bossSpeed * 10);
         }
+
+        // Random Power-up Spawning
+        if (now - g.lastRandomPowerUpTime > 15000) { // Every 15 seconds
+            g.lastRandomPowerUpTime = now;
+            spawnPowerUp({
+                x: Math.random() * (ARENA_WIDTH - 200) + 100,
+                y: Math.random() * (ARENA_HEIGHT - 200) + 100
+            });
+        }
         
         // Spawn Enemies
-        if (config.mode === 'campaign' || config.mode === 'sandbox') {
-            const maxEnemies = config.mode === 'sandbox' ? 8 : diffConfig.maxEnemiesBase + g.wave;
-            if (!g.boss && g.enemies.length < maxEnemies && now - g.lastEnemySpawnTime > diffConfig.spawnInterval) {
+        if (config.mode === 'campaign') {
+            if (g.waveState === 'active') {
+                const maxConcurrentEnemies = diffConfig.maxEnemiesBase + Math.floor(g.wave / 2);
+                
+                // Spawn regular enemies if we still have enemies to spawn
+                if (g.enemiesToSpawn > 0 && g.bosses.length === 0 && g.enemies.length < maxConcurrentEnemies && now - g.lastEnemySpawnTime > diffConfig.spawnInterval) {
+                    spawnEnemy();
+                    g.enemiesToSpawn--;
+                    g.lastEnemySpawnTime = now;
+                }
+                
+                // Spawn boss at specific waves
+                const isBossWave = g.wave % 3 === 0;
+                if (isBossWave && g.enemiesToSpawn === 0 && g.enemies.length === 0 && g.bosses.length === 0) {
+                    // Spawn boss based on wave
+                    const bossType = g.wave === 3 ? 'viper' : (g.wave === 6 ? 'sentinel' : 'goliath');
+                    spawnBoss(bossType);
+                    g.enemiesToSpawn = -1; // Prevent respawning
+                }
+                
+                // Check wave clear condition
+                if (g.enemiesToSpawn <= 0 && g.enemies.length === 0 && g.bosses.length === 0) {
+                    g.waveState = 'cleared';
+                    
+                    // Show upgrade screen
+                    setUiState(prev => ({
+                        ...prev, 
+                        showUpgradeScreen: true,
+                        availableUpgrades: generateUpgrades()
+                    }));
+                    audio.play('levelUp', player.position, player.position, { variation: false });
+                }
+            }
+        } else if (config.mode === 'sandbox') {
+            const maxEnemies = 8;
+            if (g.bosses.length === 0 && g.enemies.length < maxEnemies && now - g.lastEnemySpawnTime > diffConfig.spawnInterval) {
                 spawnEnemy();
                 g.lastEnemySpawnTime = now;
-            }
-            if (config.mode === 'campaign' && !g.boss && player.score >= 500 && g.wave === 1) {
-                spawnBoss('goliath');
-                g.wave++;
             }
         }
 
         // AI Update
-        g.enemies.forEach(e => updateEnemyAI(e, player, game.current.powerUps, now, timeScale, diffConfig, () => {
+        g.enemies.forEach(e => updateEnemyAI(e, player, g.enemies, game.current.powerUps, now, timeScale, diffConfig, () => {
             const angle = e.turretAngle;
             if (e.activePowerUps?.includes('homingMissiles') && (e.homingMissileCount || 0) > 0) {
                  fireMissile(e.id, false); 
@@ -998,7 +1306,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  const fwd = e.tier === 'intermediate' ? 28 : 22;
                  fireProjectileAt(getOffsetPoint(e.position, angle, fwd, 0), angle, e.id);
             }
-        }));
+        }, triggerAbility));
         
         // Manage Enemy Engine Sounds
         const enemiesWithDist = g.enemies.map(e => ({
@@ -1054,47 +1362,52 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
     };
     
-    const updateAbilities = (now: number, timeScale: number) => {
+    function updateAbilities(tank: TankType, now: number, timeScale: number) {
         const g = game.current;
         let stateChanged = false;
+        const isPlayer = tank.id === 'player';
         
-        const overdriveActive = g.abilities.find(a => a.id === 'overdrive')?.state === 'active';
-        const isTrueForm = g.player.chassis === 'goliath-prime-overdrive';
+        const abilities = isPlayer ? g.abilities : (tank.abilities || []);
+        if (abilities.length === 0) return;
 
-        g.abilities = g.abilities.map(a => {
+        const overdriveActive = abilities.find(a => a.id === 'overdrive')?.state === 'active';
+        const isTrueForm = tank.chassis === 'goliath-prime-overdrive';
+
+        const updatedAbilities = abilities.map(a => {
             let newState = a.state;
             let newStartTime = a.startTime;
             
-            // Sandbox: Infinite Energy
-            if (g.sandbox.infiniteEnergy && newState === 'cooldown') {
+            // Sandbox: Infinite Energy (Player Only)
+            if (isPlayer && g.sandbox.infiniteEnergy && newState === 'cooldown') {
                 newState = 'ready';
                 stateChanged = true;
             }
 
-            // BOSS ABILITIES (SANDBOX)
+            // BOSS ABILITIES (SANDBOX/PLAYER)
             if (a.id === 'laserSweep' && a.state === 'active') {
-                 g.player.turretAngle += 0.706 * timeScale;
+                 tank.turretAngle += 0.706 * timeScale;
                  
                  // UNIQUE INTERACTION: True Form X-Pattern Laser
-                 const isTrueForm = g.player.chassis === 'goliath-prime-overdrive';
                  const laserCount = isTrueForm ? 4 : 1;
                  const damage = isTrueForm ? 10 : 5;
                  
                  if (now - g.lastBossBeamTick > 100) { 
                     g.lastBossBeamTick = now;
                     // Beam originates from tip: Goliath 65, Standard 30
-                    const tipOffset = g.player.bossType === 'goliath' ? 65 : 30;
+                    const tipOffset = tank.bossType === 'goliath' ? 65 : 30;
                     
                     for(let i=0; i < laserCount; i++) {
-                        const beamAngle = g.player.turretAngle + (isTrueForm ? i * 90 : 0);
-                        const firePos = getOffsetPoint(g.player.position, beamAngle, tipOffset, 0);
+                        const beamAngle = tank.turretAngle + (isTrueForm ? i * 90 : 0);
+                        const firePos = getOffsetPoint(tank.position, beamAngle, tipOffset, 0);
                         
                         const rad = beamAngle * (Math.PI/180); 
                         const beamLen = 900;
                         const p1 = firePos; 
                         const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
                         
-                        g.enemies.forEach(e => {
+                        const targets = isPlayer ? [...g.enemies, ...g.bosses] : [g.player];
+                        targets.forEach(e => {
+                            if (!e || e.status !== 'active' || e.id === tank.id) return; // Don't hit self
                             const l2 = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
                             let t = ((e.position.x - p1.x) * (p2.x - p1.x) + (e.position.y - p1.y) * (p2.y - p1.y)) / l2;
                             t = Math.max(0, Math.min(1, t));
@@ -1102,17 +1415,15 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                             const dist = Math.hypot(e.position.x - proj.x, e.position.y - proj.y);
                             
                             if (dist < 30) {
-                                e.health -= damage;
-                                e.lastHitTime = now;
+                                applyDamage(e as TankType | Boss, damage, tank.id);
                                 g.damageNumbers.push({id: `sweep-${now}-${e.id}-${i}`, text: damage.toString(), position: e.position, createdAt: now, duration: 500, color: isTrueForm ? '#fbbf24' : '#f00'});
-                                if (e.health <= 0) handleEnemyDeath(e);
                             }
                         });
                     }
                 }
                 
                 if (now > a.startTime + (a.duration || 8500)) {
-                     audio.stop('bossLaserLoop');
+                     if (isPlayer) audio.stop('bossLaserLoop');
                      newState = 'cooldown';
                      newStartTime = now;
                      stateChanged = true;
@@ -1132,20 +1443,118 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     stateChanged = true;
                 }
             }
-            else if (a.id === 'omniBarrage' && a.state === 'active') {
+            else if (a.id === 'poisonGas' && a.state === 'active') {
                 if (now > a.startTime + (a.duration || 500)) {
                     newState = 'cooldown';
                     newStartTime = now;
                     stateChanged = true;
                 }
             }
-            // NEW ABILITIES
-            else if (a.id === 'phaseShift') {
+            // VOLT STRIDER ABILITIES
+            if (a.id === 'lightningDash') {
+                // Charge Replenishment
+                const maxCharges = tank.maxDashCharges || 4;
+                const overdriveActive = abilities.find(ab => ab.id === 'overdriveCore' && ab.state === 'active');
+                const regenTime = overdriveActive ? 500 : 2000; // 0.5s in Overdrive, 2s normal
+                
+                if (tank.dashCharges !== undefined && tank.dashCharges < maxCharges) {
+                    if (!a.chargeStartTime) a.chargeStartTime = now;
+                    if (now - a.chargeStartTime > regenTime) {
+                        tank.dashCharges++;
+                        a.chargeStartTime = now;
+                        if (isPlayer && tank.dashCharges === maxCharges) audio.play('abilityReady');
+                    }
+                } else {
+                    a.chargeStartTime = undefined;
+                }
+
+                // State Management
                 if (a.state === 'active') {
-                    g.player.isInvulnerable = true;
+                    if (now > a.startTime + (a.duration || 300)) {
+                        // Dash ended
+                        newState = (tank.dashCharges || 0) > 0 ? 'ready' : 'cooldown';
+                        newStartTime = now;
+                        stateChanged = true;
+                    }
+                } else if (a.state === 'cooldown') {
+                     // If we have charges, we are ready
+                     if ((tank.dashCharges || 0) > 0) {
+                         newState = 'ready';
+                         stateChanged = true;
+                     }
+                }
+            }
+            else if (a.id === 'staticVeil' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 2000)) {
+                    tank.isStealthed = false;
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'counterSurge') {
+                const overdriveActive = abilities.find(ab => ab.id === 'overdriveCore')?.state === 'active';
+                const duration = overdriveActive ? 800 : 400;
+                
+                if (a.state === 'active') {
+                    if (now > a.startTime + duration) {
+                        tank.isParrying = false;
+                        newState = 'cooldown';
+                        newStartTime = now;
+                        stateChanged = true;
+                    }
+                } else if (tank.isParrying && now > (tank.parryStartTime || 0) + duration) {
+                    // Fallback to clear isParrying if state was reset to ready by a successful parry
+                    tank.isParrying = false;
+                }
+            }
+            else if (a.id === 'emOverload' && a.state === 'active') {
+                // Instant effect, so immediately go to cooldown after animation
+                if (now > a.startTime + 500) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'voltLock' && a.state === 'active') {
+                 // Instant cast
+                 newState = 'cooldown';
+                 newStartTime = now;
+                 stateChanged = true;
+            }
+            else if (a.id === 'conductiveField' && a.state === 'active') {
+                // Field persists for duration
+                if (now > a.startTime + (a.duration || 6000)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'overdriveCore' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 8000)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                    // Apply Exhaustion
+                    tank.isExhausted = true;
+                    tank.exhaustionStartTime = now;
+                }
+            }
+            
+            // Handle Exhaustion Recovery
+            if (tank.isExhausted && tank.exhaustionStartTime) {
+                if (now > tank.exhaustionStartTime + 3000) { // 3s exhaustion
+                    tank.isExhausted = false;
+                }
+            }
+
+            // NEW ABILITIES
+            if (a.id === 'phaseShift') {
+                if (a.state === 'active') {
+                    tank.isInvulnerable = true;
                     // Visual effect: Ghostly
                     if (now % 100 < 20) {
-                         g.animations.push({ id: `ghost-${now}`, type: 'dashTrail', position: {...g.player.position}, angle: g.player.angle, createdAt: now, duration: 300, color: '#a855f7', opacity: 0.5 });
+                         g.animations.push({ id: `ghost-${now}-${tank.id}`, type: 'dashTrail', position: {...tank.position}, angle: tank.angle, createdAt: now, duration: 300, color: '#a855f7', opacity: 0.5 });
                     }
 
                     // Phase Damage: Damage enemies we pass through
@@ -1153,11 +1562,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         const phaseDamage = 15;
                         const phaseRadius = 50;
                         
-                        [...g.enemies, g.boss].forEach(target => {
+                        const targets = isPlayer ? [...g.enemies, g.boss] : [g.player];
+                        targets.forEach(target => {
                             if (!target || target.status !== 'active') return;
-                            const dist = Math.hypot(target.position.x - g.player.position.x, target.position.y - g.player.position.y);
+                            const dist = Math.hypot(target.position.x - tank.position.x, target.position.y - tank.position.y);
                             if (dist < phaseRadius) {
-                                applyDamage(target, phaseDamage, 'player');
+                                applyDamage(target as TankType | Boss, phaseDamage, tank.id);
                                 g.damageNumbers.push({ id: `phase-dmg-${now}-${target.id}`, text: phaseDamage.toString(), position: {...target.position, y: target.position.y - 40}, createdAt: now, duration: 600, color: '#a855f7' });
                                 audio.play('impact_damage', target.position.x);
                                 
@@ -1169,7 +1579,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     }
                     
                     if (now > a.startTime + (a.duration || 3000)) {
-                        g.player.isInvulnerable = false;
+                        tank.isInvulnerable = false;
                         newState = 'cooldown';
                         newStartTime = now;
                         stateChanged = true;
@@ -1182,14 +1592,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     a.firedCount = now;
                     // Fire 3 spread shots
                     for(let i=-1; i<=1; i++) {
-                        const angle = g.player.turretAngle + (Math.random() * 15 - 7.5) + (i * 8);
-                        const offset = getOffsetPoint(g.player.position, angle, 40, 0);
+                        const angle = tank.turretAngle + (Math.random() * 15 - 7.5) + (i * 8);
+                        const offset = getOffsetPoint(tank.position, angle, 40, 0);
                         const rad = angle * (Math.PI/180);
                         const speed = 12;
                         
                         g.projectiles.push({
-                            id: `flame-${now}-${i}-${Math.random()}`,
-                            ownerId: 'player',
+                            id: `flame-${now}-${i}-${Math.random()}-${tank.id}`,
+                            ownerId: tank.id,
                             position: offset,
                             angle: angle,
                             velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed },
@@ -1199,7 +1609,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                             color: '#ef4444'
                         });
                     }
-                    if (Math.random() > 0.5) audio.play('rocketLaunch'); 
+                    if (Math.random() > 0.5) audio.play('rocketLaunch', tank.position, g.player.position); 
                 }
                 
                 if (now > a.startTime + (a.duration || 3000)) {
@@ -1212,24 +1622,23 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  // Instant fire
                  const range = 500;
                  const damage = 15;
-                 const targets = g.enemies.filter(e => e.status === 'active' && Math.hypot(e.position.x - g.player.position.x, e.position.y - g.player.position.y) < range);
+                 const targets = isPlayer ? [...g.enemies, ...g.bosses] : [g.player];
+                 const validTargets = targets.filter(e => e && e.status === 'active' && Math.hypot(e.position.x - tank.position.x, e.position.y - tank.position.y) < range);
                  
-                 if (targets.length > 0) {
+                 if (validTargets.length > 0) {
                      // Sort by distance
-                     targets.sort((a,b) => Math.hypot(a.position.x - g.player.position.x, a.position.y - g.player.position.y) - Math.hypot(b.position.x - g.player.position.x, b.position.y - g.player.position.y));
+                     validTargets.sort((a,b) => Math.hypot(a.position.x - tank.position.x, a.position.y - tank.position.y) - Math.hypot(b.position.x - tank.position.x, b.position.y - tank.position.y));
                      
-                     const first = targets[0];
-                     first.health -= damage;
-                     first.lastHitTime = now;
+                     const first = validTargets[0];
+                     applyDamage(first as TankType | Boss, damage, tank.id);
                      g.damageNumbers.push({id: `chain-1-${now}`, text: damage.toString(), position: first.position, createdAt: now, duration: 800, color: '#eab308'});
-                     g.animations.push({ id: `chain-1-${now}`, type: 'lightning', position: g.player.position, targetPosition: first.position, createdAt: now, duration: 400, color: '#eab308' });
-                     audio.play('teslaZap');
+                     g.animations.push({ id: `chain-1-${now}`, type: 'lightning', position: tank.position, targetPosition: first.position, createdAt: now, duration: 400, color: '#eab308' });
+                     audio.play('teslaZap', tank.position, g.player.position);
 
                      // Chain to second
-                     const second = targets[1]; 
+                     const second = validTargets[1]; 
                      if (second) {
-                         second.health -= damage * 0.7;
-                         second.lastHitTime = now;
+                         applyDamage(second as TankType | Boss, damage * 0.7, tank.id);
                          g.damageNumbers.push({id: `chain-2-${now}`, text: Math.round(damage*0.7).toString(), position: second.position, createdAt: now, duration: 800, color: '#eab308'});
                          g.animations.push({ id: `chain-2-${now}`, type: 'lightning', position: first.position, targetPosition: second.position, createdAt: now, duration: 400, color: '#eab308' });
                      }
@@ -1242,11 +1651,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             else if (a.id === 'prismGuard' && a.state === 'active') {
                 // Instant shield boost
                 if (now - a.startTime < 50) { // Only on first frame roughly
-                    g.player.shieldHealth = (g.player.shieldHealth || 0) + 50;
-                    if (!g.player.activePowerUps) g.player.activePowerUps = [];
-                    if (!g.player.activePowerUps.includes('shield')) g.player.activePowerUps.push('shield'); // Visual
-                    g.player.powerUpExpireTime = now + (a.duration || 5000);
-                    audio.play('abilityReady');
+                    tank.shieldHealth = (tank.shieldHealth || 0) + 50;
+                    if (!tank.activePowerUps) tank.activePowerUps = [];
+                    if (!tank.activePowerUps.includes('shield')) tank.activePowerUps.push('shield'); // Visual
+                    tank.powerUpExpireTime = now + (a.duration || 5000);
+                    audio.play('abilityReady', tank.position, g.player.position);
                 }
                 
                 if (now > a.startTime + (a.duration || 5000)) {
@@ -1255,65 +1664,13 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     stateChanged = true;
                 }
             }
-            else if (a.id === 'omniBarrage') {
-                // Reworked Omni Barrage: Hold 'E' to channel
-                const isKeyDown = game.current.keys[a.keyBinding];
-                
-                if (a.state === 'ready' && isKeyDown) {
-                    newState = 'active';
-                    newStartTime = now;
-                    stateChanged = true;
-                    audio.start('omniCharge');
-                } else if (a.state === 'active') {
-                    if (!isKeyDown || now > a.startTime + (a.duration || 10000)) {
+            else if (a.id === 'poisonGas') {
+                // Handled in triggerAbility
+                if (a.state === 'active') {
+                    if (now > a.startTime + (a.duration || 500)) {
                         newState = 'cooldown';
                         newStartTime = now;
                         stateChanged = true;
-                        audio.stop('omniCharge');
-                    } else {
-                        // Channeling Logic
-                        const fireRate = 100; // Fast fire
-                        if (now - (a.firedCount || 0) > fireRate) {
-                            a.firedCount = now;
-                            
-                            // Fire towards cursor
-                            const mouse = game.current.mouse;
-                            const angle = Math.atan2(mouse.y - g.player.position.y, mouse.x - g.player.position.x) * (180/Math.PI);
-                            const spread = (Math.random() - 0.5) * 30; // 30 degree spread
-                            const finalAngle = angle + spread;
-                            const rad = finalAngle * (Math.PI/180);
-                            const speed = 10;
-                            
-                            // Check for nearby enemies to auto-target
-                            let targetId: string | undefined;
-                            const range = 400;
-                            const nearby = g.enemies.filter(e => e.status === 'active' && Math.hypot(e.position.x - g.player.position.x, e.position.y - g.player.position.y) < range);
-                            if (g.boss && g.boss.status === 'active' && Math.hypot(g.boss.position.x - g.player.position.x, g.boss.position.y - g.player.position.y) < range) {
-                                nearby.push(g.boss as any);
-                            }
-                            
-                            if (nearby.length > 0) {
-                                // Pick random nearby or closest? Random for barrage feel
-                                const target = nearby[Math.floor(Math.random() * nearby.length)];
-                                targetId = target.id;
-                            }
-
-                            g.projectiles.push({
-                                id: `omni-${now}-${Math.random()}`,
-                                ownerId: 'player',
-                                position: getOffsetPoint(g.player.position, finalAngle, 40, 0),
-                                angle: finalAngle,
-                                velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed },
-                                createdAt: now,
-                                size: { width: 14, height: 6 },
-                                damage: 2,
-                                color: '#ef4444',
-                                isHoming: !!targetId,
-                                targetId: targetId,
-                                turnRate: 8
-                            });
-                            audio.play('rocketLaunch');
-                        }
                     }
                 }
             }
@@ -1349,7 +1706,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 if (shouldHaveFired > firedSoFar) {
                     const count = shouldHaveFired - firedSoFar;
                     for(let i=0; i<count; i++) {
-                         fireMissile('player', overdriveActive || isTrueForm, phaseActive ? 1.5 : 1, prismActive);
+                         fireMissile(tank.id, overdriveActive || isTrueForm, phaseActive ? 1.5 : 1, prismActive);
                     }
                     a.firedCount = shouldHaveFired;
                 }
@@ -1361,146 +1718,147 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     a.firedCount = 0;
                 }
             }
-            else if (a.id === 'teslaStorm' && a.state === 'active') {
-                const zapInterval = isTrueForm ? 150 : (overdriveActive ? 250 : 500);
-                const zapRange = isTrueForm ? 500 : 350;
-                let damage = isTrueForm ? 8 : 5;
-                const maxTargets = isTrueForm ? 6 : 3;
-                
-                // INTERACTION: Phase Shift + Tesla Storm = Void Lightning
-                const phaseActive = g.abilities.find(ab => ab.id === 'phaseShift')?.state === 'active';
-                const isVoidLightning = phaseActive;
-                if (isVoidLightning) {
-                    damage *= 1.5; // True damage (simulated by high value or ignore shield)
-                    // Actually we can just pass a flag to applyDamage or handle it here.
-                    // For now, just increased damage and purple color.
-                }
-
-                if (now - (a.firedCount || 0) > zapInterval) {
-                    const targets = g.enemies.filter(e => e.status === 'active' && Math.hypot(e.position.x - g.player.position.x, e.position.y - g.player.position.y) < zapRange);
-                    if (g.boss && g.boss.status === 'active' && Math.hypot(g.boss.position.x - g.player.position.x, g.boss.position.y - g.player.position.y) < zapRange) {
-                        targets.push(g.boss as any);
-                    }
-                    const zaps = targets.slice(0, maxTargets);
+                else if (a.id === 'teslaStorm' && a.state === 'active') {
+                    const zapInterval = isTrueForm ? 150 : (overdriveActive ? 250 : 500);
+                    const zapRange = isTrueForm ? 500 : 350;
+                    let damage = isTrueForm ? 8 : 5;
+                    const maxTargets = isTrueForm ? 6 : 3;
                     
-                    if (zaps.length > 0) {
-                        a.firedCount = now;
-                        audio.play('teslaZap');
-                        
-                        // INTERACTION: Prism Guard + Tesla Storm = Static Discharge
-                        const prismActive = g.abilities.find(ab => ab.id === 'prismGuard')?.state === 'active';
-                        if (prismActive) {
-                            g.animations.push({
-                                id: `static-${now}`,
-                                type: 'shockwave',
-                                position: g.player.position,
-                                createdAt: now,
-                                duration: 400,
-                                color: '#06b6d4'
-                            });
-                            g.enemies.forEach(e => {
-                                const d = Math.hypot(e.position.x - g.player.position.x, e.position.y - g.player.position.y);
-                                if (d < 150) {
-                                    const angle = Math.atan2(e.position.y - g.player.position.y, e.position.x - g.player.position.x);
-                                    e.position.x += Math.cos(angle) * 20;
-                                    e.position.y += Math.sin(angle) * 20;
-                                }
-                            });
-                        }
+                    const phaseActive = abilities.find(ab => ab.id === 'phaseShift')?.state === 'active';
+                    const isVoidLightning = phaseActive;
+                    if (isVoidLightning) damage *= 1.5;
 
-                        zaps.forEach(target => {
-                            // Void Lightning ignores shields?
-                            if (isVoidLightning && target.shieldHealth && target.shieldHealth > 0) {
-                                // Bypass shield logic by damaging health directly
-                                target.health -= damage;
-                                target.lastHitTime = now;
-                                g.damageNumbers.push({
-                                    id: `dmg-void-${now}-${Math.random()}`, text: Math.round(damage).toString(), position: { x: target.position.x, y: target.position.y - 40 }, createdAt: now, duration: 600, color: '#a855f7', isCritical: true
+                    if (now - (a.firedCount || 0) > zapInterval) {
+                        const targets = isPlayer ? [...g.enemies, ...g.bosses] : [g.player];
+                        const validTargets = targets.filter(e => e && e.status === 'active' && Math.hypot(e.position.x - tank.position.x, e.position.y - tank.position.y) < zapRange);
+                        
+                        const zaps = validTargets.slice(0, maxTargets);
+                        
+                        if (zaps.length > 0) {
+                            a.firedCount = now;
+                            audio.play('teslaZap', tank.position, g.player.position);
+                            
+                            // INTERACTION: Prism Guard + Tesla Storm = Static Discharge
+                            const prismActive = abilities.find(ab => ab.id === 'prismGuard')?.state === 'active';
+                            if (prismActive) {
+                                g.animations.push({
+                                    id: `static-${now}-${tank.id}`,
+                                    type: 'shockwave',
+                                    position: tank.position,
+                                    createdAt: now,
+                                    duration: 400,
+                                    color: '#06b6d4'
                                 });
-                            } else {
-                                target.health -= damage;
-                                target.lastHitTime = now;
+                                const pushTargets = isPlayer ? [...g.enemies, ...g.bosses] : [g.player];
+                                pushTargets.forEach(e => {
+                                    if (!e || e.status !== 'active' || e.id === tank.id) return;
+                                    const d = Math.hypot(e.position.x - tank.position.x, e.position.y - tank.position.y);
+                                    if (d < 150) {
+                                        const angle = Math.atan2(e.position.y - tank.position.y, e.position.x - tank.position.x);
+                                        e.position.x += Math.cos(angle) * 20;
+                                        e.position.y += Math.sin(angle) * 20;
+                                    }
+                                });
+                            }
+
+                            zaps.forEach(target => {
+                                applyDamage(target as TankType | Boss, damage, tank.id);
                                 g.damageNumbers.push({
                                     id: `dmg-tesla-${now}-${Math.random()}`, text: Math.round(damage).toString(), position: { x: target.position.x, y: target.position.y - 40 }, createdAt: now, duration: 600, color: isVoidLightning ? '#a855f7' : '#00F0FF'
                                 });
-                            }
 
-                            g.animations.push({
-                                id: `lightning-${now}-${Math.random()}`, type: 'lightning', position: g.player.position, targetPosition: target.position, createdAt: now, duration: 300, color: isVoidLightning ? '#a855f7' : '#00F0FF'
+                                g.animations.push({
+                                    id: `lightning-${now}-${Math.random()}`, type: 'lightning', position: tank.position, targetPosition: target.position, createdAt: now, duration: 300, color: isVoidLightning ? '#a855f7' : '#00F0FF'
+                                });
                             });
-                            
-                            if (target.health <= 0) {
-                                if ('type' in target && target.type === 'enemy') handleEnemyDeath(target as TankType);
-                                else if ('bossType' in target) {
-                                     g.animations.push({ id: `b-die-${now}`, type: 'explosion', position: target.position, createdAt: now, duration: 1000, color: 'red' });
-                                     audio.play('bossExplosion');
-                                     audio.stopEngine('boss');
-                                     setTimeout(() => { game.current.boss = null; }, 1000);
-                                }
-                            }
-                        });
+                        }
+                    }
+                    if (now > a.startTime + (a.duration || 6000)) {
+                        newState = 'cooldown';
+                        newStartTime = now;
+                        stateChanged = true;
                     }
                 }
-                if (now > a.startTime + (a.duration || 6000)) {
-                    newState = 'cooldown';
-                    newStartTime = now;
-                    stateChanged = true;
+                else if (a.id === 'cyberBeam') {
+                    if (a.state === 'charging') {
+                        if (now - a.startTime > (a.chargeDuration || 1500)) {
+                            a.state = 'active';
+                            a.startTime = now;
+                            if (isPlayer) audio.stop('beamCharge');
+                            audio.start('beamFire');
+                        }
+                    } else if (a.state === 'active') {
+                        const rad = tank.turretAngle * (Math.PI / 180);
+                        const beamLen = isTrueForm ? 1200 : 800;
+                        const p1 = getOffsetPoint(tank.position, tank.turretAngle, 30, 0);
+                        const p2 = { x: p1.x + Math.cos(rad) * beamLen, y: p1.y + Math.sin(rad) * beamLen };
+                        
+                        if (now - g.lastBeamTick > 100) {
+                            g.lastBeamTick = now;
+                            const damage = isTrueForm ? 4 : 2;
+                            const targets = isPlayer ? [...g.enemies, ...g.bosses] : [g.player];
+                            targets.forEach(e => {
+                                if (!e || e.status !== 'active' || e.id === tank.id) return;
+                                const l2 = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2);
+                                let t = ((e.position.x - p1.x) * (p2.x - p1.x) + (e.position.y - p1.y) * (p2.y - p1.y)) / l2;
+                                t = Math.max(0, Math.min(1, t));
+                                const proj = { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+                                const dist = Math.hypot(e.position.x - proj.x, e.position.y - proj.y);
+                                if (dist < 30) {
+                                    applyDamage(e as TankType | Boss, damage, tank.id);
+                                    g.damageNumbers.push({id: `beam-${now}-${e.id}`, text: damage.toString(), position: e.position, createdAt: now, duration: 500, color: '#d946ef'});
+                                }
+                            });
+                        }
+                        
+                        if (now > a.startTime + (a.duration || 6000)) {
+                            audio.stop('beamLoop');
+                            newState = 'cooldown';
+                            newStartTime = now;
+                            stateChanged = true;
+                        }
+                    }
                 }
-            }
-            else if (a.id === 'cyberBeam' && a.state === 'charging') {
-                if (now > a.startTime + (a.chargeDuration || 1500)) {
-                    newState = 'active';
-                    newStartTime = now;
-                    stateChanged = true;
-                    audio.stop('beamCharge');
-                    audio.start('beamFire');
-                }
-            }
-            else if (a.id === 'cyberBeam' && a.state === 'active') {
-                if (now > a.startTime + (a.duration || 6000)) {
-                    newState = 'cooldown';
-                    newStartTime = now;
-                    stateChanged = true;
-                    audio.stop('beamFire');
-                } else {
-                    checkBeamCollision(now);
-                }
-            }
-            else if (a.state === 'active' && now > a.startTime + (a.duration || 0)) {
-                if (a.id === 'overdrive') audio.stop('overdriveLoop');
-                newState = 'cooldown';
-                newStartTime = now;
-                stateChanged = true;
-            }
-            else if (a.state === 'cooldown' && now > a.startTime + (a.cooldown || 0)) {
+            // Global Cooldown Logic
+            if (newState === 'cooldown' && now > newStartTime + (a.cooldown || 8000) * (isPlayer ? 1 : diffConfig.aiAbilityCooldownMultiplier)) {
                 newState = 'ready';
                 stateChanged = true;
-                audio.play('abilityReady');
+                if (isPlayer) audio.play('abilityReady');
             }
+
             return { ...a, state: newState, startTime: newStartTime };
         });
 
-        if (stateChanged) {
-             setUiState(prev => ({...prev, abilities: [...g.abilities]}));
+        if (isPlayer) {
+            g.abilities = updatedAbilities;
+            if (stateChanged) {
+                setUiState(prev => ({ ...prev, abilities: g.abilities }));
+            }
+        } else {
+            tank.abilities = updatedAbilities;
         }
     };
 
-    const updateHomingProjectiles = (dt: number, enemies: TankType[], boss: Boss | null) => {
+    function updateHomingProjectiles(dt: number, enemies: TankType[], bosses: Boss[]) {
         const timeScale = dt / 16.67;
         game.current.projectiles.forEach(p => {
             if (p.isHoming) {
                 let targetPos: Vector | null = null;
                 if (p.ownerId === 'player') {
-                    if (boss && boss.status === 'active') {
-                        targetPos = boss.position;
-                    } else {
-                        let minDist = 9999;
-                        enemies.forEach(e => {
-                            if (e.status !== 'active') return;
-                            const d = Math.hypot(e.position.x - p.position.x, e.position.y - p.position.y);
-                            if (d < minDist) { minDist = d; targetPos = e.position; }
-                        });
-                    }
+                    // Find closest target (enemy or boss)
+                    let minDist = 9999;
+                    
+                    bosses.forEach(b => {
+                        if (b.status !== 'active') return;
+                        const d = Math.hypot(b.position.x - p.position.x, b.position.y - p.position.y);
+                        if (d < minDist) { minDist = d; targetPos = b.position; }
+                    });
+
+                    enemies.forEach(e => {
+                        if (e.status !== 'active') return;
+                        const d = Math.hypot(e.position.x - p.position.x, e.position.y - p.position.y);
+                        if (d < minDist) { minDist = d; targetPos = e.position; }
+                    });
                 } else {
                     if (game.current.player.status === 'active' && !game.current.player.isInvulnerable) {
                         targetPos = game.current.player.position;
@@ -1586,6 +1944,19 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         // INTERACTION: Tesla Storm + Cyber Beam = Arc Beam
         const teslaActive = g.abilities.find(a => a.id === 'teslaStorm')?.state === 'active';
 
+        // Check Bosses
+        g.bosses.forEach(b => {
+            if (checkHit(b)) {
+                const dmg = 1.5 * damageMultiplier;
+                applyDamage(b, dmg, 'player');
+                hit = true;
+                
+                if (isHyperBeam && Math.random() < 0.3) {
+                     g.animations.push({ id: `hyper-hit-b-${now}-${Math.random()}`, type: 'hit', position: b.position, createdAt: now, duration: 200, color: '#00F0FF' });
+                }
+            }
+        });
+
         g.enemies.forEach(e => {
             if (checkHit(e)) {
                 const dmg = 1.5 * damageMultiplier;
@@ -1618,31 +1989,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             }
         });
 
-        if (g.boss && checkHit(g.boss)) {
-             const dmg = 1.5 * damageMultiplier;
-             applyDamage(g.boss, dmg, 'player');
-             hit = true;
+        // Removed redundant boss check since bosses are now in the targets array
 
-             if (teslaActive && Math.random() < 0.3) {
-                  g.enemies.forEach(oe => {
-                      if (oe.status !== 'active') return;
-                      const d = Math.hypot(oe.position.x - g.boss!.position.x, oe.position.y - g.boss!.position.y);
-                      if (d < 150) {
-                          applyDamage(oe, 2, 'player');
-                          g.animations.push({
-                              id: `arc-boss-${now}-${oe.id}`,
-                              type: 'lightning',
-                              position: g.boss!.position,
-                              targetPosition: oe.position,
-                              createdAt: now,
-                              duration: 200,
-                              color: '#00F0FF'
-                          });
-                      }
-                  });
-             }
-        }
-        
+
         if (hit) g.screenShake = Math.max(g.screenShake, isHyperBeam ? 4 : 2);
     };
 
@@ -1729,17 +2078,85 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
         // --- SHIELD DAMAGE LOGIC ---
         // Helper to apply damage to shields first
-        const applyDamage = (target: TankType | Boss, amount: number, sourceId?: string) => {
+    function applyDamage(target: TankType | Boss, amount: number, sourceId?: string) {
              if (target.status !== 'active') return;
+             if (target.isInvulnerable) return; // Phase Shift or other invuln
+
+             // PARRY LOGIC (Volt Strider)
+             if (target.isParrying) {
+                 // Block damage
+                 game.current.damageNumbers.push({
+                    id: `parry-${Date.now()}-${Math.random()}`,
+                    text: 'PARRY',
+                    position: { ...target.position, y: target.position.y - 40 },
+                    createdAt: Date.now(),
+                    duration: 800,
+                    color: '#eab308'
+                 });
+                 audio.play('parrySuccess');
+                 
+                 // Mark successful parry for chain parrying
+                 target.parryStartTime = Date.now(); // Reset start time to extend window?
+                 // Better: Set a flag or update the ability state if possible.
+                 // Since we can't easily access the ability state here without searching, 
+                 // let's rely on `parryStartTime` being updated to "now" to effectively reset the timer in updateAbilities.
+                 // Wait, updateAbilities checks `now > startTime + duration`.
+                 // If I update `startTime` to `now`, it gives another full duration.
+                 // That works for "automatically parries chain barrages".
+                 
+                 if (sourceId) {
+                     const attacker = sourceId === 'player' ? game.current.player : game.current.enemies.find(e => e.id === sourceId) || game.current.bosses.find(b => b.id === sourceId);
+                     if (attacker) {
+                         // Counter Shock if close
+                         if (Math.hypot(attacker.position.x - target.position.x, attacker.position.y - target.position.y) < 250) {
+                             applyDamage(attacker as TankType | Boss, amount * 2, target.id); // Reflect 200% damage
+                             game.current.animations.push({ id: `counter-${Date.now()}`, type: 'lightning', position: target.position, targetPosition: attacker.position, createdAt: Date.now(), duration: 300, color: '#eab308' });
+                         }
+                     }
+                 }
+                 
+                 // Reset Cooldown on successful parry
+                 const abilities = target.id === 'player' ? game.current.abilities : (target.abilities || []);
+                 const counterAbility = abilities.find(a => a.id === 'counterSurge');
+                 if (counterAbility) {
+                     counterAbility.state = 'ready';
+                     if (target.id === 'player') {
+                         game.current.combatText.push({ id: `parry-reset-${Date.now()}`, text: 'PARRY RESET', createdAt: Date.now(), duration: 1500, color: '#eab308', isCritical: true });
+                     }
+                 }
+                 
+                 return;
+             }
              
              let finalDamage = amount;
              let isCritical = false;
 
-             const attacker = sourceId === 'player' ? game.current.player : game.current.enemies.find(e => e.id === sourceId);
+             const attacker = sourceId === 'player' ? game.current.player : game.current.enemies.find(e => e.id === sourceId) || game.current.bosses.find(b => b.id === sourceId);
 
-             if (attacker && Math.random() < (attacker.critChance || 0)) {
-                isCritical = true;
-                finalDamage *= (attacker.critMultiplier || 1);
+             if (attacker) {
+                 // Stealth Bonus
+                 if (attacker.isStealthed) {
+                     finalDamage *= 1.5; // 50% Bonus
+                     attacker.isStealthed = false; // Break stealth
+                     game.current.combatText.push({ id: `ambush-${Date.now()}`, text: 'AMBUSH', createdAt: Date.now(), duration: 1500, color: '#a855f7', isCritical: true });
+                     
+                     // Apply Conductive
+                     if (!target.statusEffects) target.statusEffects = [];
+                     target.statusEffects.push({
+                         type: 'conductive',
+                         ownerId: attacker.id,
+                         startTime: Date.now(),
+                         duration: 4000
+                     });
+                 }
+
+                 const dmgMult = (attacker as any).damageMultiplier || 1;
+                 finalDamage *= dmgMult;
+
+                 if (Math.random() < (attacker.critChance || 0)) {
+                    isCritical = true;
+                    finalDamage *= (attacker.critMultiplier || 1);
+                 }
              }
 
              game.current.damageNumbers.push({
@@ -1775,9 +2192,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                       // Boss Death
                       target.status = 'dead';
                       game.current.animations.push({ id: `b-die-${now}`, type: 'explosion', position: target.position, createdAt: now, duration: 1000, color: 'red' });
-                      audio.play('bossExplosion');
-                      audio.stopEngine('boss');
-                      setTimeout(() => { game.current.boss = null; }, 1000);
+                      audio.play('bossDefeated', target.position, game.current.player.position, { variation: false });
                  }
              }
         };
@@ -1792,11 +2207,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         while (angleDiff <= -180) angleDiff += 360;
         while (angleDiff > 180) angleDiff -= 360;
         boss.angle += angleDiff * 0.05 * timeScale;
-        if (boss.attackState.currentAttack !== 'laserSweep' && boss.attackState.currentAttack !== 'omniBarrage') {
+        if (boss.attackState.currentAttack !== 'laserSweep' && boss.attackState.currentAttack !== 'poisonGas') {
              boss.turretAngle = boss.angle; 
         }
 
-        const isStationaryAttack = boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'shockwave' || boss.attackState.currentAttack === 'omniBarrage' || boss.attackState.phase === 'telegraphing';
+        const isStationaryAttack = boss.attackState.currentAttack === 'laserSweep' || boss.attackState.currentAttack === 'shockwave' || boss.attackState.currentAttack === 'poisonGas' || boss.attackState.phase === 'telegraphing';
         
         if (!isStationaryAttack) {
             const speed = 1.0 * timeScale * diffConfig.speedMultiplier;
@@ -1824,12 +2239,32 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
         
         const { currentAttack, phase, phaseStartTime, attackData } = boss.attackState;
+        
+        // Check if boss is currently using an ability via updateAbilities
+        const activeAbility = boss.abilities?.find(a => a.state === 'active' || a.state === 'charging' || a.state === 'chargingHold');
+        if (activeAbility) {
+            // Boss is busy with an ability, don't start new attacks
+            if (activeAbility.id === 'poisonGas') {
+                // No special behavior needed for now, maybe aim?
+            }
+            return;
+        }
+
         if (phase === 'idle' && now > phaseStartTime + (500 / diffConfig.bossAggression)) {
             const rand = Math.random();
             let nextAttack: typeof currentAttack = 'mortarVolley';
             if (dist < 200) { if (rand < 0.7) nextAttack = 'shockwave'; else nextAttack = 'mortarVolley'; }
-            else if (dist > 550) { if (rand < 0.5) nextAttack = 'omniBarrage'; else if (rand < 0.8) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; } 
+            else if (dist > 550) { if (rand < 0.5) nextAttack = 'poisonGas'; else if (rand < 0.8) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; } 
             else { if (rand < 0.3) nextAttack = 'mortarVolley'; else if (rand < 0.6) nextAttack = 'scatterMines'; else nextAttack = 'laserSweep'; }
+
+            // Check if we should use an ability instead of manual logic
+            const ab = boss.abilities?.find(a => a.id === nextAttack);
+            if (ab && ab.state === 'ready') {
+                triggerAbility(nextAttack, boss);
+                boss.attackState.phase = 'idle'; // Reset idle to wait for ability
+                boss.attackState.phaseStartTime = now;
+                return;
+            }
 
             const targetPos = { ...player.position }; 
             const teleDur = (dur: number) => dur / diffConfig.bossAggression;
@@ -1838,9 +2273,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1500), attackDuration: 500 } };
                 // Using new charge sound
                 audio.play('bossShockwaveCharge', boss.position.x);
-            } else if (nextAttack === 'omniBarrage') {
-                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(2000), attackDuration: 200 } }; // Replaced Railgun logic
-                audio.start('omniCharge'); // New sound
+            } else if (nextAttack === 'poisonGas') {
+                boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1000), attackDuration: 200 } };
+                // audio.start('omniCharge'); // Removed
             } else if (nextAttack === 'laserSweep') {
                 boss.attackState = { currentAttack: nextAttack, phase: 'telegraphing', phaseStartTime: now, attackData: { telegraphDuration: teleDur(1000), attackDuration: 8500, sweepAngleStart: boss.angle, sweepAngleEnd: boss.angle + 360 } };
                 audio.play('bossCharge', boss.position.x);
@@ -1871,9 +2306,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         } 
         else if (phase === 'telegraphing') {
             const dur = attackData?.telegraphDuration || 1500; const elapsed = now - phaseStartTime; const progress = elapsed / dur;
-            if (currentAttack === 'omniBarrage') {
-                // Spin visual during charge?
-                boss.turretAngle += 10 * timeScale;
+            if (currentAttack === 'poisonGas') {
+                // No special telegraph visual needed if ability handles it, but we can add one
             } else if (currentAttack === 'laserSweep') {
                 const angleToPlayer = Math.atan2(player.position.y - boss.position.y, player.position.x - boss.position.x) * (180/Math.PI);
                 let angleDiff = angleToPlayer - boss.angle; while (angleDiff <= -180) angleDiff += 360; while (angleDiff > 180) angleDiff -= 360;
@@ -1900,56 +2334,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         player.position.y += Math.sin(pushAngle) * 250;
                     }
                     setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
-                } else if (currentAttack === 'omniBarrage') {
-                    // Execute Omni Barrage
-                    audio.stop('omniCharge');
-                    audio.play('omniFire', boss.position.x);
-                    game.current.screenShake = 30;
-                    
-                    const projectileCount = 48; // High density
-                    const speed = 8;
-                    
-                    for(let i=0; i<projectileCount; i++) {
-                         const angle = (360 / projectileCount) * i;
-                         const rad = angle * (Math.PI/180);
-                         const offset = getOffsetPoint(boss.position, angle, 40, 0);
-                         
-                         game.current.projectiles.push({
-                            id: `omni-p-${now}-${i}`, 
-                            ownerId: boss.id, 
-                            position: offset, 
-                            angle: angle, 
-                            velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, 
-                            size: { width: 12, height: 6 }, 
-                            damage: 2, 
-                            color: '#ef4444', 
-                            createdAt: now
-                        });
-                    }
-
-                    // Secondary slower wave
-                    setTimeout(() => {
-                        if (!game.current.boss) return;
-                        for(let i=0; i<projectileCount; i++) {
-                             const angle = (360 / projectileCount) * i + (180/projectileCount); // Offset angle
-                             const rad = angle * (Math.PI/180);
-                             const offset = getOffsetPoint(boss.position, angle, 40, 0);
-                             
-                             game.current.projectiles.push({
-                                id: `omni-p2-${now}-${i}`, 
-                                ownerId: boss.id, 
-                                position: offset, 
-                                angle: angle, 
-                                velocity: { x: Math.cos(rad) * (speed * 0.6), y: Math.sin(rad) * (speed * 0.6) }, 
-                                size: { width: 10, height: 10 }, // Orbs
-                                damage: 2, 
-                                color: '#ef4444', 
-                                createdAt: Date.now()
-                            });
-                        }
-                    }, 200);
-
-                    setTimeout(() => { if (game.current.boss) { game.current.boss.attackState.phase = 'idle'; game.current.boss.attackState.phaseStartTime = Date.now(); } }, 500);
+                } else if (currentAttack === 'poisonGas') {
+                    // Handled by ability system mostly, but if manual:
+                    triggerAbility('poisonGas', boss);
+                    boss.attackState.phase = 'idle';
+                    boss.attackState.phaseStartTime = now;
                 } else if (currentAttack === 'mortarVolley') {
                     const ids = attackData?.telegraphIds || []; const activeTelegraphs = game.current.telegraphs.filter(t => ids.includes(t.id));
                     audio.play('bossMortarFire', boss.position.x); game.current.screenShake = Math.max(game.current.screenShake, 15);
@@ -2002,7 +2391,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
     };
 
-    const checkCollisions = (now: number) => {
+    function checkCollisions(now: number) {
         const g = game.current;
 
         g.projectiles.forEach(p => {
@@ -2010,9 +2399,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 const damage = p.damage || 1;
                 let hitSomething = false;
 
-                if (g.boss && g.boss.status === 'active') {
-                    if (Math.hypot(p.position.x - g.boss.position.x, p.position.y - g.boss.position.y) < g.boss.size.width/2) {
-                        applyDamage(g.boss, damage, 'player');
+                // Check all bosses
+                for (const b of g.bosses) {
+                    if (b.status !== 'active') continue;
+                    if (Math.hypot(p.position.x - b.position.x, p.position.y - b.position.y) < b.size.width/2) {
+                        applyDamage(b, damage, 'player');
                         hitSomething = true;
                         
                         if (p.isVampiric && g.player.health < g.player.maxHealth) {
@@ -2020,8 +2411,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                              setUiState(prev => ({...prev, playerHealth: g.player.health}));
                              g.animations.push({ id: `heal-${now}-${Math.random()}`, type: 'dashTrail', position: g.player.position, createdAt: now, duration: 300, color: '#22c55e' });
                         }
+                        break;
                     }
                 }
+
                 if (!hitSomething) {
                     for (const e of g.enemies) {
                          if (e.status !== 'active') continue;
@@ -2047,17 +2440,17 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                             hitSomething = true;
                             b.health -= damage;
                             g.damageNumbers.push({ id: `dmg-b-${now}-${Math.random()}`, text: Math.round(damage).toString(), position: b.position, createdAt: now, duration: 600, color: '#fbbf24' });
-                            audio.play('impact_damage', b.position.x);
+                            audio.play('impact_damage', b.position, g.player.position, { variation: true, pitch: 0.5 });
                             
                             if (b.health <= 0) {
                                 // Explode barrel
                                 g.barrels.splice(i, 1);
                                 g.animations.push({ id: `expl-b-${now}`, type: 'explosion', position: b.position, createdAt: now, duration: 600, color: '#f59e0b' });
-                                audio.play('rocketExplosion', b.position.x);
+                                audio.play('barrelExplosion', b.position, g.player.position, { variation: true });
                                 
                                 // Damage nearby
                                 const blastRadius = 100;
-                                [g.player, ...g.enemies, g.boss].forEach(t => {
+                                [g.player, ...g.enemies, ...g.bosses].forEach(t => {
                                     if (!t || t.status !== 'active') return;
                                     const d = Math.hypot(t.position.x - b.position.x, t.position.y - b.position.y);
                                     if (d < blastRadius) {
@@ -2112,7 +2505,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     if (p.blastRadius) {
                          audio.play('rocketExplosion', p.position.x);
                          g.animations.push({ id: `aoe-${now}-${Math.random()}`, type: 'explosion', position: p.position, createdAt: now, duration: 400, color: '#ef4444' });
-                         [...g.enemies, g.boss].filter(t => t && t.status === 'active').forEach(t => {
+                         [...g.enemies, ...g.bosses].filter(t => t && t.status === 'active').forEach(t => {
                              if (!t) return;
                              const d = Math.hypot(t.position.x - p.position.x, t.position.y - p.position.y);
                              if (d < p.blastRadius!) {
@@ -2128,12 +2521,42 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
             } else {
                 if (g.player.status !== 'active') return;
+
+                // Parry Projectile Deflection
+                if (g.player.isParrying) {
+                    const dist = Math.hypot(p.position.x - g.player.position.x, p.position.y - g.player.position.y);
+                    if (dist < (g.player.size.width / 2) + 30) { // Generous parry hitbox
+                        // Deflect
+                        p.ownerId = 'player'; // Player now owns it
+                        p.velocity.x *= -1.5; // Reflect and speed up
+                        p.velocity.y *= -1.5;
+                        p.angle = (p.angle + 180) % 360;
+                        p.damage = (p.damage || 1) * 3; // 300% Damage return
+                        p.color = '#eab308'; // Gold color
+                        
+                        audio.play('parrySuccess');
+                        g.damageNumbers.push({ id: `parry-${now}-${Math.random()}`, text: 'DEFLECT', position: { x: g.player.position.x, y: g.player.position.y - 40 }, createdAt: now, duration: 800, color: '#eab308' });
+                        
+                        // Extend Parry Window
+                        g.player.parryStartTime = now;
+                        
+                        // Reset Cooldown
+                        const counterAbility = g.abilities.find(a => a.id === 'counterSurge');
+                        if (counterAbility) {
+                            counterAbility.state = 'ready';
+                            g.combatText.push({ id: `parry-reset-${now}`, text: 'PARRY RESET', createdAt: now, duration: 1500, color: '#eab308', isCritical: true });
+                        }
+                        
+                        return; // Skip damage application
+                    }
+                }
+
                 const dist = Math.hypot(p.position.x - g.player.position.x, p.position.y - g.player.position.y);
                 if (dist < (g.player.size.width / 2)) {
                     const dmg = p.damage || 1;
                     applyDamage(g.player, dmg, p.ownerId);
 
-                    p.damage = 0;
+                    p.damage = 0; // Destroy projectile (unless piercing, but enemy projectiles usually aren't)
 
                     const shooter = g.enemies.find(e => e.id === p.ownerId);
                     if (shooter && shooter.status === 'active' && shooter.activePowerUps?.includes('lifeLeech')) {
@@ -2141,6 +2564,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         g.damageNumbers.push({ id: `leech-${now}-${shooter.id}`, text: '+LEECH', position: { x: shooter.position.x, y: shooter.position.y - 30 }, createdAt: now, duration: 600, color: '#ef4444' });
                     }
 
+                    // Damage Converter Ability
                     const damageConverter = g.abilities.find(a => a.id === 'damageConverter');
                     if (damageConverter && damageConverter.state === 'active') {
                         g.player.damageConverterCharge = Math.min(50, (g.player.damageConverterCharge || 0) + (dmg * 5));
@@ -2154,7 +2578,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         g.enemies = g.enemies.filter(e => e.status !== 'dead');
     };
 
-        const fireMissile = (ownerId: string, isOverpowered: boolean = false, damageMultiplier: number = 1, isCrystalline: boolean = false, isNapalm: boolean = false) => {
+    function fireMissile(ownerId: string, isOverpowered: boolean = false, damageMultiplier: number = 1, isCrystalline: boolean = false, isNapalm: boolean = false) {
         const g = game.current;
         const source = ownerId === 'player' ? g.player : (ownerId === 'boss' ? g.boss : g.enemies.find(e => e.id === ownerId));
         if (!source || source.status !== 'active') return;
@@ -2163,15 +2587,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         let minD = 9999;
         
         if (ownerId === 'player') {
-            if (g.boss && g.boss.status === 'active') {
-                 targetId = g.boss.id;
-            } else {
-                g.enemies.forEach(e => {
-                    if (e.status !== 'active') return;
-                    const d = Math.hypot(e.position.x - source.position.x, e.position.y - source.position.y);
-                    if (d < minD) { minD = d; targetId = e.id; }
-                });
-            }
+            const targets = [...g.enemies, ...g.bosses].filter(e => e.status === 'active');
+            targets.forEach(e => {
+                const d = Math.hypot(e.position.x - source.position.x, e.position.y - source.position.y);
+                if (d < minD) { minD = d; targetId = e.id; }
+            });
         } else {
             if (g.player.status === 'active') {
                 targetId = g.player.id;
@@ -2184,10 +2604,11 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         const isBoss = ownerId === 'boss';
         const speed = MISSILE_SPEED * (isOverpowered ? 1.5 : (isBoss ? 0.65 : 1));
-        const damage = (isOverpowered ? 4 : (isBoss ? 2 : 2)) * damageMultiplier;
+        const damage = (isOverpowered ? 4 : (isBoss ? 1.0 : 1.2)) * damageMultiplier; // Further nerfed damage
         const radius = isOverpowered ? 60 : (isBoss ? 30 : 40);
         const color = isNapalm ? '#f97316' : (isCrystalline ? '#06b6d4' : (isOverpowered ? '#fbbf24' : (isBoss ? '#a855f7' : '#ef4444')));
-        const turnRate = isBoss ? 3 : (ownerId === 'player' ? 8 : 4);
+        const turnRate = isBoss ? 1.0 : (ownerId === 'player' ? 8 : 1.2); // Further nerfed turn rate
+        const maxLifetime = ownerId === 'player' ? 5000 : 2500; // Added lifetime
 
         const latOffset = Math.random() > 0.5 ? 13 : -13;
         // Pod Offset Forward: Player 6, Enemy 5
@@ -2195,7 +2616,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const firePos = getOffsetPoint(source.position, source.turretAngle, fwd, latOffset);
 
         game.current.projectiles.push({
-            id: `missile-${Date.now()}-${Math.random()}`, ownerId: ownerId, position: firePos, angle: angle, velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, size: { width: 10, height: 6 }, damage: damage, blastRadius: radius, isHoming: true, turnRate: turnRate, targetId: targetId, color: color, createdAt: Date.now(), isChronoShard: isCrystalline, isNapalm: isNapalm
+            id: `missile-${Date.now()}-${Math.random()}`, 
+            ownerId: ownerId, 
+            position: firePos, 
+            angle: angle, 
+            velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, 
+            size: { width: 10, height: 6 }, 
+            damage: damage, 
+            blastRadius: radius, 
+            isHoming: true, 
+            turnRate: turnRate, 
+            maxLifetime: maxLifetime, 
+            targetId: targetId, 
+            color: color, 
+            secondaryColor: source.secondaryColor,
+            colorStyle: source.colorStyle,
+            createdAt: Date.now(), 
+            isChronoShard: isCrystalline, 
+            isNapalm: isNapalm
         });
         audio.play('rocketLaunch', source.position, game.current.player.position);
     };
@@ -2232,21 +2670,138 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             color = '#FF003C';
         }
 
+        const owner = ownerId === 'player' ? game.current.player : (game.current.enemies.find(e => e.id === ownerId) || game.current.bosses.find(b => b.id === ownerId) || game.current.minions.find(m => m.id === ownerId));
+
         game.current.projectiles.push({
-                        id: `p-${Date.now()}-${Math.random()}`, ownerId: ownerId, position: { ...position }, angle: angle, velocity: { x: Math.cos(rad)*speed, y: Math.sin(rad)*speed }, size: { width: 8, height: 8 }, damage: damage, color: color, createdAt: Date.now()
+            id: `p-${Date.now()}-${Math.random()}`, 
+            ownerId: ownerId, 
+            position: { ...position }, 
+            angle: angle, 
+            velocity: { x: Math.cos(rad)*speed, y: Math.sin(rad)*speed }, 
+            size: { width: 8, height: 8 }, 
+            damage: damage, 
+            color: color || owner?.color,
+            secondaryColor: owner?.secondaryColor,
+            colorStyle: owner?.colorStyle,
+            createdAt: Date.now()
         });
         
         if (ownerId === 'player') {
+            const pitch = damage > 3 ? 0.8 : 1.0;
             if (game.current.player.activePowerUps?.includes('dualCannon') || game.current.player.bossType === 'goliath' || game.current.player.chassis === 'goliath-prime-overdrive') 
-                audio.play('dualCannon', position, game.current.player.position);
+                audio.play('dualCannon', position, game.current.player.position, { variation: true, pitch });
             else 
-                audio.play(`shot_${Math.floor(Math.random() * 5) + 1}`, position, game.current.player.position);
+                audio.play(`shot_${Math.floor(Math.random() * 5) + 1}`, position, game.current.player.position, { variation: true, pitch });
         } else {
-            audio.play('shot_5', position, game.current.player.position);
+            audio.play('shot_5', position, game.current.player.position, { variation: true, pitch: 0.7 });
         }
     };
 
-    const fireProjectile = (owner: TankType, angle: number) => {
+    function performMeleeAttack(player: TankType) {
+        const now = Date.now();
+        const range = 100;
+        const arc = 120; // degrees
+        let damage = 15;
+        
+        // Stealth Logic
+        const wasStealthed = player.isStealthed;
+        if (wasStealthed) {
+            damage *= 1.5;
+            player.isStealthed = false;
+            game.current.combatText.push({ id: `ambush-${now}`, text: 'AMBUSH', createdAt: now, duration: 1500, color: '#a855f7', isCritical: true });
+        }
+
+        // Overdrive Check
+        const overdriveActive = game.current.abilities.find(a => a.id === 'overdriveCore' && a.state === 'active');
+        if (overdriveActive) {
+            damage *= 1.2;
+        }
+        
+        // Visuals
+        audio.play('bossShockwaveFire', player.position, player.position, { volume: 0.5, pitch: 1.5 });
+        game.current.animations.push({
+            id: `melee-arc-${now}`,
+            type: 'shockwave',
+            position: { ...player.position },
+            angle: player.turretAngle,
+            width: range,
+            createdAt: now,
+            duration: 300,
+            color: overdriveActive ? '#fbbf24' : '#eab308'
+        });
+
+        // Hit Detection
+        const targets = [...game.current.enemies, ...game.current.bosses];
+        let hitCount = 0;
+
+        targets.forEach(target => {
+            if (!target || target.status !== 'active') return;
+
+            const dx = target.position.x - player.position.x;
+            const dy = target.position.y - player.position.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist < range + target.size.width / 2) {
+                const angleToTarget = Math.atan2(dy, dx) * (180 / Math.PI);
+                let angleDiff = angleToTarget - player.turretAngle;
+                while (angleDiff <= -180) angleDiff += 360;
+                while (angleDiff > 180) angleDiff -= 360;
+
+                if (Math.abs(angleDiff) < arc / 2) {
+                    // HIT!
+                    hitCount++;
+                    applyDamage(target as TankType | Boss, damage, player.id);
+                    
+                    // Apply Conductive
+                    if (!target.statusEffects) target.statusEffects = [];
+                    const existing = target.statusEffects.find(e => e.type === 'conductive') as ConductiveStatusEffect;
+                    if (existing) {
+                        existing.duration = 4000;
+                        existing.startTime = now;
+                    } else {
+                        target.statusEffects.push({
+                            type: 'conductive',
+                            ownerId: player.id,
+                            startTime: now,
+                            duration: 4000
+                        });
+                    }
+
+                    // Knockback
+                    const pushAngle = angleToTarget * (Math.PI / 180);
+                    target.position.x += Math.cos(pushAngle) * 20;
+                    target.position.y += Math.sin(pushAngle) * 20;
+                    
+                    // Overdrive Chain Lightning
+                    if (overdriveActive) {
+                        // Find a secondary target nearby
+                        const secondary = targets.find(t => t.id !== target.id && t.status === 'active' && Math.hypot(t.position.x - target.position.x, t.position.y - target.position.y) < 300);
+                        if (secondary) {
+                            applyDamage(secondary as TankType | Boss, damage * 0.7, player.id);
+                            game.current.animations.push({ id: `chain-${now}-${target.id}`, type: 'lightning', position: target.position, targetPosition: secondary.position, createdAt: now, duration: 200, color: '#fbbf24' });
+                        }
+                    }
+                    
+                    // Visual
+                    game.current.animations.push({
+                        id: `hit-${now}-${target.id}`,
+                        type: 'hit',
+                        position: { ...target.position },
+                        createdAt: now,
+                        duration: 200,
+                        color: '#eab308'
+                    });
+                }
+            }
+        });
+
+        if (hitCount > 0) {
+            game.current.screenShake = 5;
+            audio.play('impact_damage', player.position, player.position, { volume: 0.7, pitch: 1.2 });
+        }
+    };
+
+    function fireProjectile(owner: TankType, angle: number) {
         const isGoliath = (owner.bossType === 'goliath' && owner.type === 'player') || owner.chassis === 'goliath-prime' || owner.chassis === 'goliath-prime-overdrive';
         const isTrueForm = owner.chassis === 'goliath-prime-overdrive';
         const activePowerUps = owner.activePowerUps || [];
@@ -2291,17 +2846,28 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
     }
 
-    const spawnEnemy = () => {
+    function spawnEnemy() {
         const x = Math.random() * (ARENA_WIDTH - 100) + 50;
         const tier = Math.random() < diffConfig.tierChance ? 'intermediate' : 'basic';
         const color = tier === 'intermediate' ? '#f97316' : '#FF003C';
         const baseHp = tier === 'intermediate' ? 30 : 15;
         const health = baseHp * diffConfig.hpMultiplier;
 
+        // Variety of chassis for enemies in campaign
+        const possibleChassis: ChassisType[] = ['vector-01', 'rogue-scout', 'iron-bastion', 'phantom-weaver', 'titan-ogre', 'volt-strider', 'inferno-cobra', 'crystal-vanguard'];
+        const chassis = tier === 'intermediate' ? possibleChassis[Math.floor(Math.random() * possibleChassis.length)] : 'vector-01';
+
         const enemy: TankType = {
             id: `e-${Date.now()}`, name: generateUsername(), type: 'enemy', status: 'spawning', spawnTime: Date.now(), position: { x, y: 50 }, velocity: {x:0,y:0}, angle: 90, turretAngle: 90, size: {width:40, height:40}, tier: tier, health: health, maxHealth: health, color: color, score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: Math.random() > 0.5 ? 1 : -1, aiStateTimer: Date.now() + Math.random() * 2000,
             critChance: 0.05,
-            critMultiplier: 1.5
+            critMultiplier: 1.5,
+            chassis: chassis,
+            abilities: tier === 'intermediate' ? [
+                { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: '', state: 'ready', duration: 1000, cooldown: 15000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0, firedCount: 0 },
+                { id: 'shockwave', name: 'Shockwave', keyBinding: '', state: 'ready', duration: 600, cooldown: 12000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0 }
+            ] : [
+                { id: 'overdrive', name: 'Overdrive', keyBinding: '', state: 'ready', duration: 5000, cooldown: 25000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0 }
+            ]
         };
 
         if (Math.random() < 0.3) {
@@ -2315,7 +2881,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         game.current.enemies.push(enemy);
     };
 
-    const spawnDuelEnemy = (name: string, tier: 'basic' | 'intermediate' | undefined, chassis?: ChassisType) => {
+    function spawnDuelEnemy(name: string, tier: 'basic' | 'intermediate' | undefined, chassis?: ChassisType) {
         game.current.enemies.push({
             id: `duel-enemy`, 
             name: name, 
@@ -2334,12 +2900,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: 1, aiStateTimer: 0,
             critChance: 0.05,
             critMultiplier: 1.5,
-            chassis: chassis // Apply visual chassis override
+            chassis: chassis, // Apply visual chassis override
+            abilities: tier === 'intermediate' ? [
+                { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: '', state: 'ready', duration: 1000, cooldown: 15000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0, firedCount: 0 },
+                { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: '', state: 'ready', duration: 6000, cooldown: 12000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0, chargeDuration: 1500 }
+            ] : [
+                { id: 'overdrive', name: 'Overdrive', keyBinding: '', state: 'ready', duration: 8000, cooldown: 20000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0 }
+            ]
         });
     };
 
-    const spawnBoss = (type: 'goliath' | 'viper' | 'sentinel', position?: Vector) => {
-        const hp = 1200 * diffConfig.bossHpMultiplier;
+    function spawnBoss(type: 'goliath' | 'viper' | 'sentinel', position?: Vector, status: 'spawning' | 'active' = 'spawning') {
+        const hp = 1000 * diffConfig.bossHpMultiplier; // Slightly nerfed from 1200
         const bossId = `boss-${Date.now()}-${Math.random()}`;
         const boss: Boss = {
             id: bossId, 
@@ -2353,11 +2925,17 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             health: hp, 
             maxHealth: hp, 
             color: '#ef4444', 
-            status: 'spawning', 
-            spawnTime: Date.now(), 
-            attackState: { currentAttack: 'none', phase: 'idle', phaseStartTime: Date.now() }
+            status: status, 
+            spawnTime: status === 'spawning' ? Date.now() : 0, 
+            attackState: { currentAttack: 'none', phase: 'idle', phaseStartTime: Date.now() },
+            abilities: type === 'goliath' ? [
+                { id: 'shockwave', name: 'Shockwave', keyBinding: '', state: 'ready', duration: 500, cooldown: 5000, startTime: 0 },
+                { id: 'poisonGas', name: 'Poison Gas', keyBinding: '', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
+                { id: 'laserSweep', name: 'Laser Sweep', keyBinding: '', state: 'ready', duration: 8500, cooldown: 18000, startTime: 0 }
+            ] : []
         };
         game.current.bosses.push(boss);
+        game.current.boss = boss; // Track as main boss for UI
         audio.play('bossSpawn');
     };
 
@@ -2400,16 +2978,26 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             const baseHp = tier === 'intermediate' ? 30 : 15;
             const health = baseHp * diffConfig.hpMultiplier;
 
+            const possibleChassis: ChassisType[] = ['vector-01', 'rogue-scout', 'iron-bastion', 'phantom-weaver', 'titan-ogre', 'volt-strider', 'inferno-cobra', 'crystal-vanguard'];
+            const chassis = tier === 'intermediate' ? possibleChassis[Math.floor(Math.random() * possibleChassis.length)] : 'vector-01';
+
             const enemy: TankType = {
-                id: `e-${Date.now()}`, name: generateUsername(), type: 'enemy', status: 'active', spawnTime: 0, position: pos, velocity: {x:0,y:0}, angle: 90, turretAngle: 90, size: {width:40, height:40}, tier: tier, health: health, maxHealth: health, color: color, score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: Math.random() > 0.5 ? 1 : -1, aiStateTimer: Date.now() + Math.random() * 2000,
+                id: `e-${Date.now()}-${Math.random()}`, name: generateUsername(), type: 'enemy', status: 'active', spawnTime: 0, position: pos, velocity: {x:0,y:0}, angle: 90, turretAngle: 90, size: {width:40, height:40}, tier: tier, health: health, maxHealth: health, color: color, score: 0, kills: 0, deaths: 0, lastFireTime: 0, aiMode: 'engage', aiStrafeDir: Math.random() > 0.5 ? 1 : -1, aiStateTimer: Date.now() + Math.random() * 2000,
                 critChance: 0.05,
-                critMultiplier: 1.5
+                critMultiplier: 1.5,
+                chassis: chassis,
+                abilities: tier === 'intermediate' ? [
+                    { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: '', state: 'ready', duration: 1000, cooldown: 15000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0, firedCount: 0 },
+                    { id: 'shockwave', name: 'Shockwave', keyBinding: '', state: 'ready', duration: 600, cooldown: 12000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0 }
+                ] : [
+                    { id: 'overdrive', name: 'Overdrive', keyBinding: '', state: 'ready', duration: 5000, cooldown: 25000 * diffConfig.aiAbilityCooldownMultiplier, startTime: 0 }
+                ]
             };
             game.current.enemies.push(enemy);
             audio.play('uiClick');
         },
         spawnBoss: (position?: Vector) => {
-            spawnBoss('goliath', position);
+            spawnBoss('goliath', position, 'active');
         },
         clearAll: () => {
             game.current.enemies = [];
@@ -2474,16 +3062,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 return;
             }
 
+            if (e.key === 'Escape') {
+                if (game.current.sandbox.spawnMode !== 'none') {
+                    game.current.sandbox.spawnMode = 'none';
+                    audio.play('uiBack');
+                } else if (isSandboxPanelOpen) {
+                    setIsSandboxPanelOpen(false);
+                }
+            }
+
             if (game.current.cutscene.active) return; // Block input during cutscene
 
-            if (e.key.toLowerCase() === 'q') triggerAbility(game.current.abilities[0]?.id || 'overdrive');
-            if (e.key.toLowerCase() === 'e') triggerAbility(game.current.abilities[1]?.id);
-            if (e.key.toLowerCase() === 'r') triggerAbility(game.current.abilities[2]?.id || 'damageConverter');
-            if (e.key.toLowerCase() === 'f') triggerAbility(game.current.abilities[3]?.id || 'missileBarrage');
-            if (e.key.toLowerCase() === 't') triggerAbility('scatterMines');
-            if (e.key.toLowerCase() === 'y') triggerAbility(game.current.player.bossType === 'goliath' ? 'nanoSwarm' : 'teslaStorm');
-            
-            if ((e.key === ' ' || e.code === 'Space') && !e.repeat) fireProjectile(game.current.player, game.current.player.turretAngle);
+            game.current.abilities.forEach(ab => {
+                let key = e.key.toLowerCase();
+                if (key === ' ') key = 'space';
+                if (ab.keyBinding && ab.keyBinding.toLowerCase() === key) {
+                    triggerAbility(ab.id);
+                }
+            });
         };
         
         const onKeyUp = (e: KeyboardEvent) => {
@@ -2529,33 +3125,66 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
             }
         };
-        const onMouseDown = () => {}
+        const onMouseDown = (e: MouseEvent) => {
+            const g = game.current;
+            g.keys[`mouse${e.button}`] = true;
+            if (g.sandbox.spawnMode === 'none') return;
+            
+            // Only spawn if clicking on the canvas
+            if (e.target !== canvasRef.current) return;
+
+            const pos = { ...g.mouse };
+            const mode = g.sandbox.spawnMode;
+            
+            if (mode === 'enemy-basic') sandboxActions.spawnEnemy('basic', pos);
+            else if (mode === 'enemy-intermediate') sandboxActions.spawnEnemy('intermediate', pos);
+            else if (mode === 'boss-goliath') spawnBoss('goliath', pos);
+            else if (mode.startsWith('powerup-')) {
+                const type = mode.replace('powerup-', '') as PowerUpType;
+                sandboxActions.spawnPowerUp(type, pos);
+            }
+        };
+
+        const onMouseUp = (e: MouseEvent) => {
+            game.current.keys[`mouse${e.button}`] = false;
+        };
 
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mouseup', onMouseUp);
         return () => {
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mousedown', onMouseDown);
+            window.removeEventListener('mouseup', onMouseUp);
         };
     }, []);
 
-    const triggerAbility = (id: string) => {
+    function triggerAbility(id: string, tank: TankType | Boss = game.current.player) {
         const now = Date.now();
-        const ab = game.current.abilities.find(a => a.id === id);
-        const isTrueForm = game.current.player.chassis === 'goliath-prime-overdrive';
+        const abilities = tank.id === 'player' ? game.current.abilities : (tank.abilities || []);
+        const ab = abilities.find(a => a.id === id);
+        const isTrueForm = tank.chassis === 'goliath-prime-overdrive';
+        const isPlayer = tank.id === 'player';
 
         if (ab && ab.state === 'ready') {
             if (id === 'cyberBeam') {
                 ab.state = 'charging';
                 ab.startTime = Date.now();
-                audio.start('beamCharge');
-                game.current.combatText.push({ id: `ct-${now}`, text: 'CYBER BEAM', createdAt: now, duration: 2000, color: '#d946ef', isCritical: true });
+                if (isPlayer) {
+                    audio.start('beamCharge');
+                    game.current.combatText.push({ id: `ct-${now}`, text: 'CYBER BEAM', createdAt: now, duration: 2000, color: '#d946ef', isCritical: true });
+                } else {
+                    audio.play('bossCharge', tank.position, game.current.player.position);
+                }
                 return;
             }
+
+            // Omni Barrage Removed
+
 
             ab.state = 'active';
             ab.startTime = Date.now();
@@ -2563,17 +3192,21 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             
             if (id === 'shockwave') {
                 // Using new Sound
-                audio.play('bossShockwaveFire');
-                game.current.screenShake = 30;
+                if (isPlayer) {
+                    audio.play('bossShockwaveFire');
+                    game.current.screenShake = 30;
+                } else {
+                    audio.play('bossShockwaveFire', tank.position, game.current.player.position, { volume: 0.8 });
+                }
                 
                 // TRUE FORM COMBO: Hellfire Stomp
-                if (isTrueForm) {
+                if (isTrueForm && isPlayer) {
                     game.current.screenShake = 50;
                     // Spawn Persistent Fissure
                     game.current.effectZones.push({
                         id: `fissure-${Date.now()}`,
                         type: 'fissure',
-                        position: { ...game.current.player.position },
+                        position: { ...tank.position },
                         radius: 300,
                         createdAt: Date.now(),
                         duration: 5000,
@@ -2581,37 +3214,40 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     });
                 }
 
-                game.current.animations.push({ id: `shock-${Date.now()}`, type: 'shockwave', position: game.current.player.position, createdAt: Date.now(), duration: 600, width: 250 });
-                game.current.enemies.forEach(e => {
-                    if (Math.hypot(e.position.x - game.current.player.position.x, e.position.y - game.current.player.position.y) < 250) {
-                        e.health -= 10;
-                        game.current.damageNumbers.push({id: `sw-${Date.now()}-${e.id}`, text: '10', position: e.position, createdAt: Date.now(), duration: 1000, color: '#f00'});
-                        const angle = Math.atan2(e.position.y - game.current.player.position.y, e.position.x - game.current.player.position.x);
-                        e.position.x += Math.cos(angle) * 150; e.position.y += Math.sin(angle) * 150;
-                        if (e.health <= 0) handleEnemyDeath(e);
+                game.current.animations.push({ id: `shock-${Date.now()}`, type: 'shockwave', position: tank.position, createdAt: Date.now(), duration: 600, width: 300 });
+                
+                const shockTargets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                shockTargets.forEach(e => {
+                    if (!e || e.status !== 'active') return;
+                    if (Math.hypot(e.position.x - tank.position.x, e.position.y - tank.position.y) < 300) {
+                        applyDamage(e as TankType | Boss, 15, tank.id);
+                        const angle = Math.atan2(e.position.y - tank.position.y, e.position.x - tank.position.x);
+                        e.position.x += Math.cos(angle) * 120; e.position.y += Math.sin(angle) * 120;
                     }
                 });
             } else if (id === 'mortarVolley') {
-                audio.play('bossMortarFire');
-                const offsets = [{x:0, y:0}, {x: 40, y: 30}, {x: -40, y: 30}, {x: 40, y: -30}, {x: -40, y: -30}];
+                if (isPlayer) audio.play('bossMortarFire');
+                else audio.play('bossMortarFire', tank.position, game.current.player.position, { volume: 0.7 });
+                const offsets = [{x:0, y:0}, {x: 50, y: 40}, {x: -50, y: 40}, {x: 50, y: -40}, {x: -50, y: -40}];
                 
+                const targetBasePos = isPlayer ? game.current.mouse : game.current.player.position;
+
                 // TRUE FORM COMBO: Orbital Saturation
-                if (isTrueForm) {
+                if (isTrueForm && isPlayer) {
                     // Instant Orbital Beams instead of shells
                     offsets.forEach((off, i) => {
-                        const targetPos = { x: game.current.mouse.x + off.x * 1.5, y: game.current.mouse.y + off.y * 1.5 }; // Wider spread
+                        const targetPos = { x: targetBasePos.x + off.x * 1.5, y: targetBasePos.y + off.y * 1.5 }; // Wider spread
                          setTimeout(() => {
                              // Instant Damage
-                             audio.play('shot_5'); // Placeholder beam sound
+                             if (isPlayer) audio.play('shot_5'); // Placeholder beam sound
                              game.current.animations.push({ id: `orbital-${Date.now()}-${i}`, type: 'orbitalBeam', position: targetPos, createdAt: Date.now(), duration: 800 });
-                             game.current.screenShake = 5;
+                             if (isPlayer) game.current.screenShake = 5;
                              
-                             game.current.enemies.forEach(e => {
-                                if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 100) {
-                                    e.health -= 25; // Massive damage
-                                    e.lastHitTime = Date.now();
-                                    game.current.damageNumbers.push({id: `orb-${Date.now()}-${e.id}-${i}`, text: '25', position: e.position, createdAt: Date.now(), duration: 1000, color: '#fbbf24'});
-                                    if (e.health <= 0) handleEnemyDeath(e);
+                             const orbitalTargets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                             orbitalTargets.forEach(e => {
+                                if (!e || e.status !== 'active') return;
+                                if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 120) {
+                                    applyDamage(e as TankType | Boss, 25, tank.id);
                                 }
                             });
                          }, i * 100);
@@ -2619,98 +3255,324 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 } else {
                     // Standard Mortar
                     offsets.forEach((off, i) => {
-                        const targetPos = { x: game.current.mouse.x + off.x, y: game.current.mouse.y + off.y };
+                        const targetPos = { x: targetBasePos.x + off.x, y: targetBasePos.y + off.y };
                         setTimeout(() => {
                             game.current.animations.push({ id: `mortar-${Date.now()}-${i}`, type: 'mortarStrike', position: targetPos, createdAt: Date.now(), duration: 800 });
                             setTimeout(() => {
-                                if (i === 0) { game.current.screenShake = 15; audio.play('rocketExplosion'); }
-                                 game.current.enemies.forEach(e => {
-                                    if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 80) {
-                                        e.health -= 10;
-                                        game.current.damageNumbers.push({id: `mt-${Date.now()}-${e.id}-${i}`, text: '10', position: e.position, createdAt: Date.now(), duration: 1000, color: '#f00'});
-                                        if (e.health <= 0) handleEnemyDeath(e);
+                                if (i === 0) {
+                                    if (isPlayer) {
+                                        game.current.screenShake = 15;
+                                        audio.play('rocketExplosion');
+                                    } else {
+                                        audio.play('rocketExplosion', targetPos, game.current.player.position, { volume: 0.6 });
+                                    }
+                                }
+                                 const mortarTargets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                                 mortarTargets.forEach(e => {
+                                    if (!e || e.status !== 'active') return;
+                                    if (Math.hypot(e.position.x - targetPos.x, e.position.y - targetPos.y) < 100) {
+                                        applyDamage(e as TankType | Boss, 15, tank.id);
                                     }
                                 });
-                            }, 400); 
+                            }, 300); 
                         }, i * 50);
                     });
                 }
 
             } else if (id === 'laserSweep') {
-                audio.play('bossLaserStart'); 
-                audio.start('bossLaserLoop');
+                if (isPlayer) {
+                    audio.play('bossLaserStart'); 
+                    audio.start('bossLaserLoop');
+                } else {
+                    audio.play('bossLaserStart', tank.position, game.current.player.position, { volume: 0.8 });
+                }
             } else if (id === 'scatterMines') {
-                audio.play('mineDeploy');
+                if (isPlayer) audio.play('mineDeploy');
+                else audio.play('mineDeploy', tank.position, game.current.player.position, { volume: 0.6 });
+                const targetBasePos = isPlayer ? game.current.mouse : game.current.player.position;
                 for(let i=0; i<8; i++) {
                     const angle = (Math.PI * 2 / 8) * i; const radius = 80;
-                    const minePos = { x: Math.max(20, Math.min(ARENA_WIDTH-20, game.current.mouse.x + Math.cos(angle) * radius)), y: Math.max(20, Math.min(ARENA_HEIGHT-20, game.current.mouse.y + Math.sin(angle) * radius)) };
-                    game.current.telegraphs.push({ id: `mine-player-${Date.now()}-${i}`, type: 'circle', position: minePos, radius: 30, createdAt: Date.now(), duration: 12000, color: '#f97316' });
+                    const minePos = { x: Math.max(20, Math.min(ARENA_WIDTH-20, targetBasePos.x + Math.cos(angle) * radius)), y: Math.max(20, Math.min(ARENA_HEIGHT-20, targetBasePos.y + Math.sin(angle) * radius)) };
+                    game.current.telegraphs.push({ id: `mine-${tank.id}-${Date.now()}-${i}`, type: 'circle', position: minePos, radius: 30, createdAt: Date.now(), duration: 12000, color: isPlayer ? '#f97316' : '#ef4444' });
                 }
             } else if (id === 'nanoSwarm') {
-                audio.play('shot_1'); 
+                if (isPlayer) audio.play('shot_1'); 
+                else audio.play('shot_1', tank.position, game.current.player.position, { volume: 0.5 });
                 const count = isTrueForm ? 24 : 12;
                 const damage = isTrueForm ? 2 : 1;
                 const speed = isTrueForm ? 16 : 12;
 
                 for(let i=0; i<count; i++) {
                     setTimeout(() => {
-                        if (!game.current.player || game.current.player.status !== 'active') return;
+                        if (!tank || tank.status !== 'active') return;
                         
                         // Play sound for each swarm missile
-                        audio.play('shot_4', game.current.player.position.x);
+                        if (isPlayer) audio.play('shot_4', tank.position.x);
+                        else audio.play('shot_4', tank.position, game.current.player.position, { volume: 0.3 });
 
-                        const angle = game.current.player.turretAngle + (Math.random() - 0.5) * 90; const rad = angle * (Math.PI/180);
+                        const angle = tank.turretAngle + (Math.random() - 0.5) * 90; const rad = angle * (Math.PI/180);
                         game.current.projectiles.push({
-                            id: `nano-${Date.now()}-${i}`, ownerId: 'player', position: { ...game.current.player.position }, angle: angle, velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, size: { width: 6, height: 6 }, damage: damage, isHoming: true, turnRate: 15, isVampiric: true, color: '#22c55e', createdAt: Date.now()
+                            id: `nano-${Date.now()}-${i}`, ownerId: tank.id, position: { ...tank.position }, angle: angle, velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed }, size: { width: 6, height: 6 }, damage: damage, isHoming: true, turnRate: 15, isVampiric: true, color: isPlayer ? '#22c55e' : '#ef4444', createdAt: Date.now()
                         });
                     }, i * (isTrueForm ? 25 : 50));
                 }
-            } else if (id === 'overdrive') {
-                audio.play('overdrive'); audio.start('overdriveLoop');
+            } else if (id === 'poisonGas') {
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'POISON GAS', createdAt: now, duration: 2000, color: '#10b981', isCritical: true });
+                
+                // Fire Poison Projectile
+                const angle = tank.turretAngle;
+                const rad = angle * (Math.PI/180);
+                const speed = 12;
+                
+                game.current.projectiles.push({
+                    id: `poison-proj-${now}-${tank.id}`,
+                    ownerId: tank.id,
+                    position: getOffsetPoint(tank.position, angle, 40, 0),
+                    angle: angle,
+                    velocity: { x: Math.cos(rad) * speed, y: Math.sin(rad) * speed },
+                    size: { width: 16, height: 16 },
+                    damage: 5, // Initial impact damage
+                    color: '#10b981',
+                    createdAt: now,
+                    isPoisonContainer: true
+                });
+                
+                if (isPlayer) audio.play('poisonGasShoot', tank.position.x);
+                else audio.play('poisonGasShoot', tank.position, game.current.player.position);
+
+            } else if (id === 'lightningDash') {
+                // Check charges
+                if (tank.dashCharges !== undefined && tank.dashCharges > 0) {
+                    if (isPlayer) audio.play('dash');
+                    
+                    // Dash Logic - Directional
+                    let dashAngle = tank.angle; // Default to facing direction
+                    
+                    if (isPlayer) {
+                        // Determine direction from keys
+                        let dx = 0;
+                        let dy = 0;
+                        if (game.current.keys['w'] || game.current.keys['arrowup']) dy -= 1;
+                        if (game.current.keys['s'] || game.current.keys['arrowdown']) dy += 1;
+                        if (game.current.keys['a'] || game.current.keys['arrowleft']) dx -= 1;
+                        if (game.current.keys['d'] || game.current.keys['arrowright']) dx += 1;
+                        
+                        if (dx !== 0 || dy !== 0) {
+                            dashAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                        }
+                    }
+
+                    const rad = dashAngle * (Math.PI / 180);
+                    const dashSpeed = 30;
+                    tank.velocity.x += Math.cos(rad) * dashSpeed;
+                    tank.velocity.y += Math.sin(rad) * dashSpeed;
+                    
+                    // Trail
+                    game.current.animations.push({
+                        id: `dash-${now}`,
+                        type: 'dashTrail',
+                        position: { ...tank.position },
+                        angle: dashAngle,
+                        createdAt: now,
+                        duration: 400,
+                        color: '#eab308',
+                        opacity: 0.8
+                    });
+                    
+                    // Consume Charge
+                    tank.dashCharges--;
+                    
+                    // If we dashed into a Volt Locked target, knockdown
+                    if (tank.voltLockTargetId) {
+                        const target = [...game.current.enemies, ...game.current.bosses].find(t => t.id === tank.voltLockTargetId);
+                        if (target && target.status === 'active') {
+                            const dist = Math.hypot(target.position.x - tank.position.x, target.position.y - tank.position.y);
+                            if (dist < 150) { // Close enough
+                                // Knockdown
+                                if (!target.statusEffects) target.statusEffects = [];
+                                target.statusEffects.push({
+                                    type: 'stun',
+                                    ownerId: tank.id,
+                                    startTime: now,
+                                    duration: 1500
+                                });
+                                game.current.animations.push({ id: `knockdown-${now}`, type: 'shockwave', position: target.position, createdAt: now, duration: 400, width: 100, color: '#eab308' });
+                                audio.play('impact_heavy');
+                            }
+                        }
+                    }
+                } else {
+                    // No charges, can't use (shouldn't happen if state is handled correctly, but safety check)
+                    return;
+                }
+
+            } else if (id === 'emOverload') {
+                if (isPlayer) {
+                    audio.play('empBlast');
+                    game.current.combatText.push({ id: `ct-${now}`, text: 'ELECTROMAGNETIC OVERLOAD', createdAt: now, duration: 2000, color: '#0ea5e9', isCritical: true });
+                }
+                game.current.screenShake = 10;
+                
+                // AOE Stun/Damage
+                const range = 250;
+                const damage = 15; // Balanced damage
+                
+                game.current.animations.push({
+                    id: `emp-${now}`,
+                    type: 'shockwave',
+                    position: { ...tank.position },
+                    createdAt: now,
+                    duration: 500,
+                    width: range * 2,
+                    color: '#0ea5e9'
+                });
+
+                const targets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                targets.forEach(t => {
+                    if (!t || t.status !== 'active') return;
+                    const dist = Math.hypot(t.position.x - tank.position.x, t.position.y - tank.position.y);
+                    if (dist < range) {
+                        applyDamage(t as TankType | Boss, damage, tank.id);
+                        // Apply Stun
+                        if (!t.statusEffects) t.statusEffects = [];
+                        t.statusEffects.push({
+                            type: 'stun',
+                            ownerId: tank.id,
+                            startTime: now,
+                            duration: 2000
+                        });
+                        // Break Shields
+                        if (t.shieldHealth && t.shieldHealth > 0) {
+                            t.shieldHealth = 0;
+                            game.current.animations.push({ id: `shield-break-${now}-${t.id}`, type: 'shieldBreak', position: t.position, createdAt: now, duration: 600, color: '#06b6d4' });
+                        }
+                    }
+                });
+
+            } else if (id === 'staticVeil') {
+                if (isPlayer) audio.play('stealth');
+                tank.isStealthed = true;
+                tank.stealthStartTime = now;
+                // Visual distortion
+                game.current.animations.push({ id: `veil-${now}`, type: 'transformFlash', position: tank.position, createdAt: now, duration: 500, color: '#a855f7' });
+                
+            } else if (id === 'voltLock') {
+                // Find nearest target under cursor
+                if (isPlayer) {
+                    let bestTarget: any = null;
+                    let bestDist = 400; // Increased range
+                    const mouse = game.current.mouse;
+                    
+                    [...game.current.enemies, ...game.current.bosses].forEach(t => {
+                        if (!t || t.status !== 'active') return;
+                        const dist = Math.hypot(t.position.x - mouse.x, t.position.y - mouse.y);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestTarget = t;
+                        }
+                    });
+                    
+                    if (bestTarget) {
+                        tank.voltLockTargetId = bestTarget.id;
+                        audio.play('lockOn');
+                        // Apply Volt Lock Status (Dazed)
+                        if (!bestTarget.statusEffects) bestTarget.statusEffects = [];
+                        bestTarget.statusEffects.push({
+                            type: 'voltLock', // We'll treat this as Dazed in AI
+                            ownerId: tank.id,
+                            startTime: now,
+                            duration: 5000
+                        });
+                        // Visual
+                        game.current.animations.push({ id: `lock-${now}`, type: 'orbitalBeam', position: bestTarget.position, createdAt: now, duration: 500, color: '#eab308' });
+                    } else {
+                        // Refund if no target
+                        ab.state = 'ready'; 
+                        return;
+                    }
+                }
+
+            } else if (id === 'conductiveField') {
+                if (isPlayer) audio.play('fieldActivate');
+                game.current.effectZones.push({
+                    id: `conductive-${now}`,
+                    type: 'conductive',
+                    position: { ...tank.position },
+                    radius: 250,
+                    createdAt: now,
+                    duration: 6000,
+                    ownerId: tank.id
+                });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'CONDUCTIVE FIELD', createdAt: now, duration: 2000, color: '#0ea5e9', isCritical: true });
+
+            } else if (id === 'overdriveCore') {
+                if (isPlayer) {
+                    audio.play('overdrive');
+                    game.current.combatText.push({ id: `ct-${now}`, text: 'OVERDRIVE CORE', createdAt: now, duration: 2000, color: '#eab308', isCritical: true });
+                }
+                // Effects handled in update loop
+                
+            } else if (id === 'counterSurge') {
+                if (isPlayer) audio.play('parryReady');
+                tank.isParrying = true;
+                tank.parryStartTime = now;
+                // Visual Cue
+                game.current.animations.push({ id: `parry-cue-${now}`, type: 'shieldHit', position: tank.position, createdAt: now, duration: 400, color: '#eab308' });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'COUNTER SURGE', createdAt: now, duration: 2000, color: '#eab308', isCritical: true });
+            } else if (id === 'staticVeil') {
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'STATIC VEIL', createdAt: now, duration: 2000, color: '#a855f7', isCritical: true });
+            } else if (id === 'voltLock') {
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'VOLT LOCK', createdAt: now, duration: 2000, color: '#eab308', isCritical: true });
+            }
+ else if (id === 'overdrive') {
+                if (isPlayer) { audio.play('overdrive'); audio.start('overdriveLoop'); }
+                else audio.play('overdrive', tank.position, game.current.player.position, { volume: 0.6 });
             } else if (id === 'missileBarrage' || id === 'teslaStorm') {
-                audio.play('abilityReady'); 
+                if (isPlayer) audio.play('abilityReady'); 
+                else audio.play('abilityReady', tank.position, game.current.player.position, { volume: 0.5 });
             } else if (id === 'damageConverter') {
-                audio.play('shieldHit'); 
+                if (isPlayer) audio.play('shieldHit'); 
+                else audio.play('shieldHit', tank.position, game.current.player.position, { volume: 0.6 });
             } else {
-                audio.play('uiClick');
+                if (isPlayer) audio.play('uiClick');
             }
             
             if (id === 'overdrive') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'OVERDRIVE', createdAt: now, duration: 2000, color: '#f59e0b', isCritical: true });
-                const oldHp = game.current.player.health;
-                game.current.player.health = Math.min(game.current.player.maxHealth, oldHp + 2);
-                if (game.current.player.health > oldHp) {
-                    game.current.damageNumbers.push({ id: `heal-${now}`, text: 'REPAIR', position: { ...game.current.player.position, y: game.current.player.position.y - 40 }, createdAt: now, duration: 1000, color: '#4ade80' });
-                    setUiState(prev => ({...prev, playerHealth: game.current.player.health}));
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'OVERDRIVE', createdAt: now, duration: 2000, color: '#f59e0b', isCritical: true });
+                const oldHp = tank.health;
+                tank.health = Math.min(tank.maxHealth, oldHp + 2);
+                if (tank.health > oldHp) {
+                    game.current.damageNumbers.push({ id: `heal-${now}`, text: 'REPAIR', position: { ...tank.position, y: tank.position.y - 40 }, createdAt: now, duration: 1000, color: '#4ade80' });
+                    if (isPlayer) setUiState(prev => ({...prev, playerHealth: tank.health}));
                 }
             } else if (id === 'missileBarrage') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'MISSILE BARRAGE', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'MISSILE BARRAGE', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
             } else if (id === 'teslaStorm') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'TESLA STORM', createdAt: now, duration: 2000, color: '#00F0FF', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'TESLA STORM', createdAt: now, duration: 2000, color: '#00F0FF', isCritical: true });
             } else if (id === 'phaseShift') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'PHASE SHIFT', createdAt: now, duration: 2000, color: '#a855f7', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'PHASE SHIFT', createdAt: now, duration: 2000, color: '#a855f7', isCritical: true });
             } else if (id === 'flamethrower') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'FLAMETHROWER', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'FLAMETHROWER', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
             } else if (id === 'chainLightning') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'CHAIN LIGHTNING', createdAt: now, duration: 2000, color: '#eab308', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'CHAIN LIGHTNING', createdAt: now, duration: 2000, color: '#eab308', isCritical: true });
                         } else if (id === 'prismGuard') {
-                game.current.combatText.push({ id: `ct-${now}`, text: 'PRISM GUARD', createdAt: now, duration: 2000, color: '#06b6d4', isCritical: true });
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: 'PRISM GUARD', createdAt: now, duration: 2000, color: '#06b6d4', isCritical: true });
                         } else if (id === 'toxicRounds') {
-                const overdriveActive = game.current.abilities.find(a => a.id === 'overdrive')?.state === 'active';
-                game.current.combatText.push({ id: `ct-${now}`, text: overdriveActive ? 'NAPALM VOLLEY' : 'TOXIC ROUNDS', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
+                const overdriveActive = (isPlayer ? game.current.abilities : (tank.abilities || [])).find(a => a.id === 'overdrive')?.state === 'active';
+                if (isPlayer) game.current.combatText.push({ id: `ct-${now}`, text: overdriveActive ? 'NAPALM VOLLEY' : 'TOXIC ROUNDS', createdAt: now, duration: 2000, color: '#ef4444', isCritical: true });
                 const numMissiles = 6;
                 for (let i = 0; i < numMissiles; i++) {
                     setTimeout(() => {
-                        fireMissile('player', false, 0.5, false, overdriveActive);
+                        fireMissile(tank.id, false, 0.5, false, overdriveActive);
                     }, i * 100); // Stagger the missiles
                 }
             }
-            setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
+            if (isPlayer) setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
         }
     };
 
     // --- DRAW ---
-    const draw = (ctx: CanvasRenderingContext2D) => {
+    function draw(ctx: CanvasRenderingContext2D) {
         ctx.clearRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
         const g = game.current;
         const now = Date.now();
@@ -2798,6 +3660,15 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             {!game.current.cutscene.active && (
                 <>
                     <HUD enemiesRemaining={uiState.enemiesRemaining} />
+                    <button 
+                        onClick={() => navigateTo('main-menu')}
+                        className="absolute top-6 left-48 z-50 px-4 py-2 bg-black/60 border border-red-500/50 text-red-500 font-orbitron text-xs hover:bg-red-500/20 transition-all flex items-center gap-2 group pointer-events-auto shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                    >
+                        <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        EXIT TO MENU
+                    </button>
                     <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-4 pointer-events-none">
                         <Leaderboard player={{...game.current.player, score: uiState.playerScore}} enemies={game.current.enemies} boss={game.current.boss} />
                         <KillFeed messages={game.current.killFeed} />
@@ -2813,7 +3684,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 <>
                     <button 
                         onClick={() => setIsSandboxPanelOpen(prev => !prev)}
-                        className="absolute right-4 bottom-4 z-30 w-12 h-12 bg-black/50 border border-[var(--color-primary-cyan)]/50 flex items-center justify-center text-[var(--color-primary-cyan)] hover:bg-[var(--color-primary-cyan)]/20 transition-all shadow-[0_0_10px_rgba(0,224,255,0.2)]"
+                        className="absolute right-2 bottom-2 z-30 w-12 h-12 bg-black/50 border border-[var(--color-primary-cyan)]/50 flex items-center justify-center text-[var(--color-primary-cyan)] hover:bg-[var(--color-primary-cyan)]/20 transition-all shadow-[0_0_10px_rgba(0,224,255,0.2)]"
                         title="Sandbox Panel [TAB]"
                     >
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2837,7 +3708,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             )}
 
             {uiState.gameOver && (
-                <GameOverScreen score={uiState.playerScore} kills={uiState.playerKills} onRestart={() => navigateTo('game')} onMainMenu={() => navigateTo('main-menu')} />
+                <GameOverScreen score={uiState.playerScore} kills={uiState.playerKills} onRestart={() => navigateTo('game')} onMainMenu={() => navigateTo('main-menu')} isCampaign={config.mode === 'campaign'} />
             )}
         </div>
     );
@@ -2886,12 +3757,78 @@ const drawCombatText = (ctx: CanvasRenderingContext2D, combatText: CombatText[])
     });
 };
 
-function updateEnemyAI(e: TankType, player: TankType, powerUps: PowerUp[], now: number, timeScale: number, diffConfig: any, onFire: () => void): void {
+function updateEnemyAI(e: TankType, player: TankType, allEnemies: TankType[], powerUps: PowerUp[], now: number, timeScale: number, diffConfig: any, onFire: () => void, triggerAbility: (id: string, tank: TankType) => void): void {
     if (e.status !== 'active' || player.status !== 'active') return;
 
-    const distToPlayer = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
-    const angleToPlayer = Math.atan2(player.position.y - e.position.y, player.position.x - e.position.x) * (180/Math.PI);
+    // Volt Lock (Dazed) Logic
+    let targetPos = player.position;
+    let targetAngle = Math.atan2(player.position.y - e.position.y, player.position.x - e.position.x) * (180/Math.PI);
+    let distToTarget = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
     
+    const dazedEffect = e.statusEffects?.find(eff => eff.type === 'voltLock');
+    if (dazedEffect) {
+        // Find nearest ally to attack
+        let minDist = 9999;
+        let nearestAlly: TankType | null = null;
+        allEnemies.forEach(ally => {
+            if (ally.id === e.id || ally.status !== 'active') return;
+            const d = Math.hypot(ally.position.x - e.position.x, ally.position.y - e.position.y);
+            if (d < minDist) {
+                minDist = d;
+                nearestAlly = ally;
+            }
+        });
+        
+        if (nearestAlly) {
+            targetPos = (nearestAlly as TankType).position;
+            targetAngle = Math.atan2(targetPos.y - e.position.y, targetPos.x - e.position.x) * (180/Math.PI);
+            distToTarget = minDist;
+        }
+    }
+
+    const distToPlayer = distToTarget; // Use calculated target distance
+    const angleToPlayer = targetAngle; // Use calculated target angle
+    
+    // AI Ability Usage
+    if (e.abilities && e.abilities.length > 0) {
+        const readyAbilities = e.abilities.filter(a => a.state === 'ready');
+        if (readyAbilities.length > 0) {
+            const tacticalOptimization = diffConfig.aiTacticalOptimization || 0;
+            const abilityChance = diffConfig.aiAbilityChance || 0;
+
+            readyAbilities.forEach(ab => {
+                let shouldTrigger = false;
+                
+                // Base chance based on difficulty
+                if (Math.random() < abilityChance) {
+                    shouldTrigger = true;
+                }
+
+                // Tactical overrides
+                if (tacticalOptimization > 0.3) {
+                    // Use defensive abilities if health is low
+                    if (ab.id === 'overdrive' && e.health < e.maxHealth * 0.4) shouldTrigger = true;
+                    if (ab.id === 'prismGuard' && e.health < e.maxHealth * 0.6) shouldTrigger = true;
+                    if (ab.id === 'phaseShift' && e.health < e.maxHealth * 0.3) shouldTrigger = true;
+                    
+                    // Use offensive abilities if player is close or in range
+                    if (ab.id === 'shockwave' && distToPlayer < 200) shouldTrigger = true;
+                    if (ab.id === 'flamethrower' && distToPlayer < 250) shouldTrigger = true;
+                    if (ab.id === 'chainLightning' && distToPlayer < 350) shouldTrigger = true;
+                    if (ab.id === 'mortarVolley' && distToPlayer < 400) shouldTrigger = true;
+                    if (ab.id === 'toxicRounds' && distToPlayer < 500) shouldTrigger = true;
+                    if (ab.id === 'nanoSwarm' && distToPlayer < 600) shouldTrigger = true;
+                    if (ab.id === 'cyberBeam' && distToPlayer < 700) shouldTrigger = true;
+                    if (ab.id === 'poisonGas' && distToPlayer < 500) shouldTrigger = true;
+                }
+
+                if (shouldTrigger) {
+                    triggerAbility(ab.id, e);
+                }
+            });
+        }
+    }
+
     // Turret tracks player always
     let angleDiff = angleToPlayer - e.turretAngle;
     while (angleDiff <= -180) angleDiff += 360;
@@ -2899,11 +3836,11 @@ function updateEnemyAI(e: TankType, player: TankType, powerUps: PowerUp[], now: 
     e.turretAngle += angleDiff * (0.1 + diffConfig.aiTracking) * timeScale;
     
     // Power-up Detection
-    let targetPos = player.position;
     let isScavenging = false;
     
-    // Only seek powerups if we don't have one
-    if (!e.activePowerUps || e.activePowerUps.length === 0) {
+    // Only seek powerups if we don't have one and are not dazed
+    if ((!e.activePowerUps || e.activePowerUps.length === 0) && !dazedEffect) {
+        targetPos = player.position; // Reset to player if not dazed (will be overwritten if scavenging)
         let minDist = 400; // Detection range
         for (const p of powerUps) {
             const d = Math.hypot(p.position.x - e.position.x, p.position.y - e.position.y);
@@ -2913,6 +3850,8 @@ function updateEnemyAI(e: TankType, player: TankType, powerUps: PowerUp[], now: 
                 isScavenging = true;
             }
         }
+    } else if (!dazedEffect) {
+        targetPos = player.position;
     }
 
     if (now > (e.aiStateTimer || 0)) {
@@ -2976,3 +3915,4 @@ function updateEnemyAI(e: TankType, player: TankType, powerUps: PowerUp[], now: 
         }
     }
 }
+

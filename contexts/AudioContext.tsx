@@ -90,6 +90,20 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
     ] 
   },
 
+  // Poison Gas SFX
+  poisonGasShoot: {
+    layers: [
+      { type: 'sine', freqStart: 400, freqEnd: 100, gain: 0.1, duration: 0.3 },
+      { type: 'noise', filterFreq: 1200, gain: 0.15, duration: 0.2 } // Hiss
+    ]
+  },
+  poisonGasHit: {
+    layers: [
+      { type: 'noise', filterFreq: 800, gain: 0.2, duration: 0.5 }, // Gas release
+      { type: 'triangle', freqStart: 100, freqEnd: 50, gain: 0.1, duration: 0.4 }
+    ]
+  },
+
   // Combat - Impacts
   impact_damage: { layers: [{ type: 'sawtooth', freqStart: 150, freqEnd: 50, gain: 0.15, duration: 0.1 }, { type: 'noise', filterFreq: 1000, gain: 0.1, duration: 0.1 }] }, 
   impact_player: { layers: [{ type: 'square', freqStart: 100, freqEnd: 20, gain: 0.25, duration: 0.2 }, { type: 'noise', filterFreq: 600, gain: 0.2, duration: 0.15 }] }, 
@@ -197,13 +211,56 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
     ] 
   },
 
-  mineDeploy: { 
+  // Power-ups
+  powerUp_homingMissiles: { layers: [{ type: 'sine', freqStart: 400, freqEnd: 1200, gain: 0.1, duration: 0.4 }, { type: 'triangle', freqStart: 800, freqEnd: 1600, gain: 0.05, duration: 0.2 }] },
+  powerUp_shield: { layers: [{ type: 'sine', freqStart: 200, freqEnd: 600, gain: 0.1, duration: 0.5 }, { type: 'square', freqStart: 1000, freqEnd: 2000, gain: 0.03, duration: 0.1 }] },
+  powerUp_dualCannon: { layers: [{ type: 'sawtooth', freqStart: 100, freqEnd: 300, gain: 0.1, duration: 0.4 }, { type: 'noise', filterFreq: 1000, gain: 0.05, duration: 0.2 }] },
+  powerUp_lifeLeech: { layers: [{ type: 'sine', freqStart: 600, freqEnd: 200, gain: 0.1, duration: 0.4, modFreq: 10 }] },
+  powerUp_regensule: { layers: [{ type: 'sine', freqStart: 400, freqEnd: 800, gain: 0.08, duration: 0.6, modFreq: 5 }] },
+  powerUpSpawn: { layers: [{ type: 'sine', freqStart: 2000, freqEnd: 1000, gain: 0.05, duration: 0.2 }] },
+
+  // Game Events
+  levelUp: { 
     layers: [
-      { type: 'square', freqStart: 600, freqEnd: 150, gain: 0.15, duration: 0.3 }, 
-      { type: 'sawtooth', freqStart: 200, freqEnd: 50, gain: 0.1, duration: 0.35 }, 
-      { type: 'noise', filterFreq: 1500, gain: 0.1, duration: 0.15 } 
+      { type: 'sine', freqStart: 440, freqEnd: 880, gain: 0.1, duration: 0.5 },
+      { type: 'sine', freqStart: 554, freqEnd: 1108, gain: 0.1, duration: 0.5, delay: 0.1 },
+      { type: 'sine', freqStart: 659, freqEnd: 1318, gain: 0.1, duration: 0.5, delay: 0.2 }
     ] 
   },
+  bossDefeated: {
+    layers: [
+      { type: 'noise', filterFreq: 400, gain: 0.4, duration: 2.0 },
+      { type: 'sawtooth', freqStart: 100, freqEnd: 20, gain: 0.3, duration: 2.5 },
+      { type: 'square', freqStart: 400, freqEnd: 50, gain: 0.2, duration: 1.5, modFreq: 10 }
+    ]
+  },
+  playerDeath: {
+    layers: [
+      { type: 'noise', filterFreq: 200, gain: 0.5, duration: 1.5 },
+      { type: 'sawtooth', freqStart: 200, freqEnd: 20, gain: 0.4, duration: 2.0 },
+      { type: 'sine', freqStart: 1000, freqEnd: 100, gain: 0.1, duration: 1.0 }
+    ]
+  },
+  barrelExplosion: {
+    layers: [
+      { type: 'noise', filterFreq: 1200, gain: 0.3, duration: 0.6 },
+      { type: 'square', freqStart: 150, freqEnd: 40, gain: 0.2, duration: 0.4 }
+    ]
+  },
+  mineExplosion: {
+    layers: [
+      { type: 'noise', filterFreq: 2000, gain: 0.25, duration: 0.3 },
+      { type: 'sawtooth', freqStart: 400, freqEnd: 100, gain: 0.15, duration: 0.25 }
+    ]
+  },
+  dash: { layers: [{ type: 'noise', filterFreq: 3000, filterSweep: { start: 3000, end: 500 }, gain: 0.1, duration: 0.2 }] },
+  teleport: { layers: [{ type: 'sine', freqStart: 100, freqEnd: 2000, gain: 0.1, duration: 0.15 }, { type: 'square', freqStart: 2000, freqEnd: 100, gain: 0.05, duration: 0.1 }] },
+  
+  // Abilities Extra
+  flamethrower: { layers: [{ type: 'noise', filterFreq: 800, filterSweep: { start: 800, end: 400 }, gain: 0.15, duration: 0.1 }] },
+  chainLightning: { layers: [{ type: 'sawtooth', freqStart: 2000, freqEnd: 500, gain: 0.1, duration: 0.1, modFreq: 100 }] },
+  prismGuard: { layers: [{ type: 'sine', freqStart: 1500, freqEnd: 1500, gain: 0.08, duration: 0.5, modFreq: 5 }] },
+  nanoSwarm: { layers: [{ type: 'sine', freqStart: 2000, freqEnd: 2500, gain: 0.03, duration: 0.1, modFreq: 200 }] },
 };
 
 export class AudioController {
@@ -364,7 +421,7 @@ export class AudioController {
       this.globalFilter.frequency.setTargetAtTime(freq, t, 0.2);
   }
 
-  play(key: string, location: number | Vector = 0, listener?: Vector) {
+  play(key: string, location: number | Vector = 0, listener?: Vector, options?: { pitch?: number, volume?: number, variation?: boolean }) {
     if (!this.settings.sound) return;
     if (this.ctx.state === 'suspended') this.resume();
 
@@ -375,11 +432,12 @@ export class AudioController {
 
     // --- Concurrency & Debounce ---
     const lastTime = this.lastPlayTime.get(key) || 0;
-    if (t - lastTime < 0.04) return; // 40ms debounce
+    const debounceTime = options?.variation ? 0.02 : 0.04;
+    if (t - lastTime < debounceTime) return; 
     this.lastPlayTime.set(key, t);
 
     const activeCount = this.activeSounds.get(key) || 0;
-    if (activeCount > 8) return; // Hard limit
+    if (activeCount > 12) return; // Increased limit
     this.activeSounds.set(key, activeCount + 1);
     
     // Cleanup count after duration
@@ -394,7 +452,6 @@ export class AudioController {
     let distGain = 1.0;
 
     if (typeof location === 'number') {
-        // Legacy X-only panning
         if (location !== 0) {
             panVal = Math.max(-1, Math.min(1, (location - 500) / 500));
         }
@@ -403,19 +460,19 @@ export class AudioController {
         const dy = location.y - listener.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         
-        // Attenuation
         const maxDist = 1200;
         distGain = Math.max(0.0, 1 - (dist / maxDist));
-        distGain = distGain * distGain; // Quadratic falloff
+        distGain = distGain * distGain; 
 
         panVal = Math.max(-1, Math.min(1, dx / 500));
     }
 
     // RANDOMIZATION FACTORS
-    // Slight random variances to make every sound unique
-    const speedVar = 0.95 + Math.random() * 0.1; // 0.95x to 1.05x speed
-    const gainVar = 0.9 + Math.random() * 0.2;  // 0.9x to 1.1x volume
-    const detuneVar = (Math.random() - 0.5) * 200; // -100 to +100 cents pitch shift
+    const useVariation = options?.variation !== false;
+    const speedVar = useVariation ? (0.92 + Math.random() * 0.16) : 1.0; 
+    const gainVar = (options?.volume || 1.0) * (useVariation ? (0.85 + Math.random() * 0.3) : 1.0);
+    const baseDetune = (options?.pitch || 0) * 100; // pitch 1.0 = 100 cents
+    const detuneVar = baseDetune + (useVariation ? (Math.random() - 0.5) * 300 : 0); 
 
     config.layers.forEach((layer) => {
       const startTime = t + (layer.delay || 0) / speedVar;
@@ -433,10 +490,8 @@ export class AudioController {
         const bufSrc = this.ctx.createBufferSource();
         bufSrc.buffer = this.noiseBuffer;
         
-        // Apply detune to noise playback rate for pitch effect
-        if (detuneVar !== 0) {
-            bufSrc.playbackRate.value = Math.pow(2, detuneVar / 1200);
-        }
+        const playbackRate = Math.pow(2, detuneVar / 1200);
+        bufSrc.playbackRate.value = playbackRate;
         
         source = bufSrc;
 
@@ -452,7 +507,7 @@ export class AudioController {
         filter.connect(gain);
       } else {
         const osc = this.ctx.createOscillator();
-        osc.type = 'sine'; // Fallback if type mismatch
+        osc.type = 'sine'; 
         try { (osc as any).type = layer.type; } catch(e) {}
         
         osc.frequency.setValueAtTime(layer.freqStart || 440, startTime);
@@ -460,12 +515,11 @@ export class AudioController {
           osc.frequency.exponentialRampToValueAtTime(layer.freqEnd, startTime + duration);
         }
         
-        // Apply random detune
         osc.detune.value = detuneVar;
 
         if (layer.modFreq) {
           const lfo = this.ctx.createOscillator();
-          lfo.frequency.value = layer.modFreq * speedVar; // Scale LFO speed too
+          lfo.frequency.value = layer.modFreq * speedVar; 
           const lfoGain = this.ctx.createGain();
           lfoGain.gain.value = 20;
           lfo.connect(lfoGain).connect((osc as any).frequency);
