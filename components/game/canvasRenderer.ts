@@ -142,8 +142,6 @@ export function drawLaserSweep(ctx: CanvasRenderingContext2D, position: Vector, 
 export function drawCyberBeam(ctx: CanvasRenderingContext2D, player: Tank, target: Vector, now: number, state: string, startTime: number, chargeDuration: number = 1500, isOverdrive: boolean = false) {
     const isCharging = state === 'charging';
     
-    // Determine start position (turret tip)
-    // Matches logic in GameScreen for offset
     const isGoliath = (player.bossType === 'goliath' && player.type === 'player') || player.chassis === 'goliath-prime' || player.chassis === 'goliath-prime-overdrive';
     const offset = isGoliath ? 65 : 30;
     
@@ -153,12 +151,7 @@ export function drawCyberBeam(ctx: CanvasRenderingContext2D, player: Tank, targe
 
     ctx.save();
     
-    // Determine Colors (OmniBarrage charge uses a different visual inside drawBoss/drawTank via overlays, but this function handles Cyber Beam specific charge)
-    // If the ability calling this is Omni Barrage, we should render radial charge.
-    // However, drawCyberBeam is specifically for linear beams. 
-    // We will assume this function is ONLY called for CyberBeam ability in GameScreen logic.
-
-    const mainColor = isOverdrive ? '#fbbf24' : '#d946ef'; // Amber vs Fuchsia
+    const mainColor = isOverdrive ? '#fbbf24' : '#d946ef'; 
     const glowColor = isOverdrive ? 'rgba(251, 191, 36, 0.5)' : 'rgba(217, 70, 239, 0.5)';
 
     if (isCharging) {
@@ -167,90 +160,153 @@ export function drawCyberBeam(ctx: CanvasRenderingContext2D, player: Tank, targe
         
         ctx.translate(startX, startY);
         
-        // Charging Particles
-        const numParticles = 8;
-        const orbitRadius = 30 * (1 - progress);
-        const rot = now * 0.005;
+        // 1. Charging Particles (Sucking in)
+        const numParticles = 12;
+        const orbitRadius = 60 * (1 - progress);
+        const rot = now * 0.01;
         
         ctx.fillStyle = mainColor;
         for(let i=0; i<numParticles; i++) {
             const angle = (i / numParticles) * Math.PI * 2 + rot;
             const px = Math.cos(angle) * orbitRadius;
             const py = Math.sin(angle) * orbitRadius;
-            const size = (2 + progress * 2) * (0.8 + Math.random() * 0.4);
+            const size = (1 + progress * 3) * (0.8 + Math.random() * 0.4);
             
             ctx.beginPath();
             ctx.arc(px, py, size, 0, Math.PI*2);
             ctx.fill();
             
-            // Trailing lines for particles
-            ctx.strokeStyle = mainColor;
+            // Energy Tendrils
+            ctx.strokeStyle = `rgba(${isOverdrive ? '251, 191, 36' : '217, 70, 239'}, ${0.3 * progress})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(px, py);
+            // Jagged line towards center
+            const midX = px * 0.5 + (Math.random() - 0.5) * 10;
+            const midY = py * 0.5 + (Math.random() - 0.5) * 10;
+            ctx.lineTo(midX, midY);
             ctx.lineTo(0, 0);
             ctx.stroke();
         }
         
-        // Central Core
-        ctx.shadowBlur = 20 * progress;
+        // 2. Electrical Arcs around the tip
+        if (Math.random() > 0.5) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const arcAngle = Math.random() * Math.PI * 2;
+            const arcR = 10 + Math.random() * 20;
+            ctx.moveTo(Math.cos(arcAngle) * arcR, Math.sin(arcAngle) * arcR);
+            for(let j=0; j<3; j++) {
+                const nextA = arcAngle + (Math.random() - 0.5) * 1;
+                const nextR = arcR * 0.5;
+                ctx.lineTo(Math.cos(nextA) * nextR, Math.sin(nextA) * nextR);
+            }
+            ctx.lineTo(0, 0);
+            ctx.stroke();
+        }
+
+        // 3. Central Core
+        ctx.shadowBlur = 30 * progress;
         ctx.shadowColor = mainColor;
-        ctx.globalAlpha = 0.5 + (progress * 0.5);
+        ctx.globalAlpha = 0.6 + (progress * 0.4);
+        
+        // Pulsing core
+        const corePulse = 1 + Math.sin(now * 0.05) * 0.2;
         ctx.beginPath();
-        ctx.arc(0, 0, 4 + progress * 6, 0, Math.PI*2);
+        ctx.arc(0, 0, (4 + progress * 10) * corePulse, 0, Math.PI*2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(0, 0, (8 + progress * 15) * corePulse, 0, Math.PI*2);
+        ctx.fillStyle = mainColor;
+        ctx.globalAlpha = 0.3 * progress;
         ctx.fill();
         
     } else if (state === 'active') {
-        const dx = target.x - startX;
-        const dy = target.y - startY;
-        const len = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
+        const beamLen = isOverdrive ? 1200 : 800;
+        const angle = degToRad(player.turretAngle);
         
         ctx.translate(startX, startY);
         ctx.rotate(angle);
         
-        // Beam Pulse
-        const pulse = 1 + Math.sin(now * 0.05) * 0.1;
+        // Beam Turbulence/Flicker
+        const flicker = Math.random() * 4;
+        const pulse = 1 + Math.sin(now * 0.08) * 0.1;
         
-        // Outer Glow
-        ctx.lineWidth = (16 * pulse);
+        // 1. Massive Outer Glow
+        ctx.lineWidth = (40 * pulse) + flicker;
         ctx.strokeStyle = glowColor;
         ctx.lineCap = 'round';
-        ctx.shadowBlur = 20;
+        ctx.shadowBlur = 40;
         ctx.shadowColor = mainColor;
-        
+        ctx.globalAlpha = 0.3;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(len, 0);
+        ctx.lineTo(beamLen, 0);
         ctx.stroke();
         
-        // Inner Core
-        ctx.lineWidth = 6;
+        // 2. Secondary Glow
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = (20 * pulse) + flicker;
+        ctx.strokeStyle = mainColor;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(beamLen, 0);
+        ctx.stroke();
+        
+        // 3. Inner Core (White Hot)
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = 8 + (Math.sin(now * 0.1) * 2);
         ctx.strokeStyle = '#ffffff';
-        ctx.shadowBlur = 10;
-        
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#fff';
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(len, 0);
+        ctx.lineTo(beamLen, 0);
         ctx.stroke();
         
-        // Impact Effect
-        ctx.translate(len, 0);
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowBlur = 15;
+        // 4. Energy Ripples (Wavy lines along the beam)
+        ctx.save();
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.4;
         ctx.beginPath();
-        ctx.arc(0, 0, 8 * pulse, 0, Math.PI*2);
+        for(let x=0; x<beamLen; x+=20) {
+            const y = Math.sin(x * 0.05 + now * 0.2) * 10;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // 5. Impact Effect (Extreme)
+        ctx.save();
+        ctx.translate(beamLen, 0);
+        
+        // Impact Glow
+        const impactPulse = 1.5 + Math.sin(now * 0.1) * 0.5;
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 40 * impactPulse);
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(0.4, mainColor);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 40 * impactPulse, 0, Math.PI*2);
         ctx.fill();
         
-        // Sparks
-        ctx.fillStyle = mainColor;
-        for(let i=0; i<6; i++) {
-            const sparkA = (Math.random() - 0.5) * Math.PI * 1.5 + Math.PI; // Backward spray
-            const sparkD = Math.random() * 30;
+        // Impact Sparks (Explosive)
+        ctx.fillStyle = '#fff';
+        for(let i=0; i<10; i++) {
+            const sparkA = (Math.random() - 0.5) * Math.PI * 1.8 + Math.PI; 
+            const sparkD = Math.random() * 50 * impactPulse;
+            const sparkS = 1 + Math.random() * 3;
             ctx.beginPath();
-            ctx.arc(Math.cos(sparkA)*sparkD, Math.sin(sparkA)*sparkD, 2, 0, Math.PI*2);
+            ctx.arc(Math.cos(sparkA)*sparkD, Math.sin(sparkA)*sparkD, sparkS, 0, Math.PI*2);
             ctx.fill();
         }
+        ctx.restore();
     }
     
     ctx.restore();
@@ -529,109 +585,177 @@ export function drawOverdriveAura(ctx: CanvasRenderingContext2D, chassis: Chassi
     ctx.save();
     const flicker = Math.random() * 0.2 + 0.8;
     const pulse = Math.sin(now * 0.01) * 0.1 + 0.9;
+    const fastPulse = Math.sin(now * 0.03) * 0.05 + 0.95;
+
+    // --- SHARED EXTREME EFFECTS ---
+    // 1. Base Distortion Glow
+    ctx.save();
+    const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 65 * pulse);
+    const auraColor = chassis === 'rogue-scout' ? '0, 240, 255' : 
+                      (chassis === 'phantom-weaver' ? '168, 85, 247' : 
+                      (chassis === 'iron-bastion' ? '249, 115, 22' : 
+                      (chassis === 'titan-ogre' ? '34, 197, 94' : 
+                      (chassis === 'inferno-cobra' ? '239, 68, 68' : '234, 179, 8'))));
+    
+    grad.addColorStop(0, `rgba(255, 255, 255, ${0.4 * flicker})`);
+    grad.addColorStop(0.4, `rgba(${auraColor}, ${0.2 * pulse})`);
+    grad.addColorStop(1, `rgba(${auraColor}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 65 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Energy Particles
+    if (Math.random() > 0.5) {
+        for (let i = 0; i < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 25 + Math.random() * 40;
+            const size = 1 + Math.random() * 2.5;
+            ctx.fillStyle = `rgb(${auraColor})`;
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = `rgb(${auraColor})`;
+            ctx.beginPath();
+            ctx.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
 
     switch (chassis) {
         case 'rogue-scout':
             // Cyan Speed Aura
-            ctx.strokeStyle = `rgba(0, 240, 255, ${0.6 * flicker})`;
+            ctx.strokeStyle = `rgba(0, 240, 255, ${0.8 * flicker})`;
             ctx.lineWidth = 2;
-            ctx.setLineDash([10, 5]);
-            ctx.lineDashOffset = -now * 0.1;
-            ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([15, 10]);
+            ctx.lineDashOffset = -now * 0.15;
+            ctx.beginPath(); ctx.arc(0, 0, 38 * fastPulse, 0, Math.PI * 2); ctx.stroke();
             
-            ctx.strokeStyle = `rgba(0, 240, 255, ${0.3 * flicker})`;
-            ctx.setLineDash([5, 15]);
-            ctx.lineDashOffset = now * 0.05;
-            ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = `rgba(0, 240, 255, ${0.4 * flicker})`;
+            ctx.setLineDash([5, 20]);
+            ctx.lineDashOffset = now * 0.1;
+            ctx.beginPath(); ctx.arc(0, 0, 45 * pulse, 0, Math.PI * 2); ctx.stroke();
             break;
 
         case 'iron-bastion':
             // Orange Fortress Aura
-            ctx.strokeStyle = `rgba(249, 115, 22, ${0.7 * flicker})`;
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = `rgba(249, 115, 22, ${0.9 * flicker})`;
+            ctx.lineWidth = 4;
             const sides = 6;
             ctx.beginPath();
             for (let i = 0; i < sides; i++) {
-                const angle = (i / sides) * Math.PI * 2 + (now * 0.001);
-                const x = Math.cos(angle) * 45 * pulse;
-                const y = Math.sin(angle) * 45 * pulse;
+                const angle = (i / sides) * Math.PI * 2 + (now * 0.002);
+                const r = 48 * pulse;
+                const x = Math.cos(angle) * r;
+                const y = Math.sin(angle) * r;
                 if (i === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
             ctx.closePath();
             ctx.stroke();
-            ctx.fillStyle = `rgba(249, 115, 22, ${0.1 * flicker})`;
+            ctx.fillStyle = `rgba(249, 115, 22, ${0.2 * flicker})`;
             ctx.fill();
             break;
 
         case 'phantom-weaver':
             // Purple Phase Aura
-            ctx.strokeStyle = `rgba(168, 85, 247, ${0.5 * flicker})`;
             ctx.lineWidth = 2;
-            for (let i = 0; i < 3; i++) {
-                const r = 30 + i * 8 + (now * 0.02 % 10);
-                const alpha = 0.5 * (1 - (r - 30) / 24);
+            for (let i = 0; i < 4; i++) {
+                const r = 30 + i * 10 + (now * 0.03 % 10);
+                const alpha = 0.6 * (1 - (r - 30) / 40);
                 ctx.strokeStyle = `rgba(168, 85, 247, ${alpha * flicker})`;
-                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(0, 0, r * fastPulse, 0, Math.PI * 2); ctx.stroke();
             }
             break;
 
         case 'titan-ogre':
             // Green Regen Aura
-            ctx.fillStyle = `rgba(34, 197, 94, ${0.15 * flicker})`;
-            ctx.beginPath(); ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = `rgba(34, 197, 94, ${0.25 * flicker})`;
+            ctx.beginPath(); ctx.arc(0, 0, 42 * pulse, 0, Math.PI * 2); ctx.fill();
+            
             ctx.strokeStyle = `rgba(34, 197, 94, ${0.6 * flicker})`;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([4, 8]);
-            ctx.beginPath(); ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2); ctx.stroke();
+            ctx.lineWidth = 3;
+            ctx.setLineDash([4, 12]);
+            ctx.lineDashOffset = -now * 0.08;
+            ctx.beginPath(); ctx.arc(0, 0, 48 * pulse, 0, Math.PI * 2); ctx.stroke();
             break;
 
         case 'volt-strider':
-            // Yellow Electric Aura
-            ctx.strokeStyle = `rgba(234, 179, 8, ${0.8 * flicker})`;
-            ctx.lineWidth = 1.5;
-            if (Math.random() > 0.5) {
+            // Yellow Electric Aura (Extreme)
+            ctx.strokeStyle = `rgba(234, 179, 8, ${0.9 * flicker})`;
+            ctx.lineWidth = 3;
+            
+            // Inner Glow
+            ctx.fillStyle = `rgba(234, 179, 8, ${0.2 * pulse})`;
+            ctx.beginPath(); ctx.arc(0, 0, 48, 0, Math.PI * 2); ctx.fill();
+
+            // Jagged Electric Arcs
+            if (Math.random() > 0.2) {
+                ctx.save();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#eab308';
                 ctx.beginPath();
-                let lastX = 0, lastY = 0;
-                for (let i = 0; i < 8; i++) {
-                    const angle = (i / 8) * Math.PI * 2;
-                    const r = 30 + Math.random() * 15;
+                const segments = 10;
+                for (let i = 0; i < segments; i++) {
+                    const angle = (i / segments) * Math.PI * 2;
+                    const r = 35 + Math.random() * 30;
                     const x = Math.cos(angle) * r;
                     const y = Math.sin(angle) * r;
                     if (i === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
+                    else {
+                        const prevAngle = ((i - 1) / segments) * Math.PI * 2;
+                        const prevR = 35 + Math.random() * 30;
+                        const midX = (x + Math.cos(prevAngle) * prevR) / 2 + (Math.random() - 0.5) * 20;
+                        const midY = (y + Math.sin(prevAngle) * prevR) / 2 + (Math.random() - 0.5) * 20;
+                        ctx.lineTo(midX, midY);
+                        ctx.lineTo(x, y);
+                    }
                 }
                 ctx.closePath();
                 ctx.stroke();
+                ctx.restore();
             }
+            
+            // Outer Energy Ring
+            ctx.strokeStyle = `rgba(250, 204, 21, ${0.5 * pulse})`;
+            ctx.lineWidth = 5;
+            ctx.setLineDash([20, 25]);
+            ctx.rotate(now * 0.008);
+            ctx.beginPath(); ctx.arc(0, 0, 58, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
             break;
 
         case 'inferno-cobra':
             // Red Heat Aura
-            const gradient = ctx.createRadialGradient(0, 0, 20, 0, 0, 45);
-            gradient.addColorStop(0, `rgba(239, 68, 68, ${0.4 * flicker})`);
-            gradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
-            ctx.fillStyle = gradient;
-            ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI * 2); ctx.fill();
+            const heatGrad = ctx.createRadialGradient(0, 0, 15, 0, 0, 55);
+            heatGrad.addColorStop(0, `rgba(239, 68, 68, ${0.6 * flicker})`);
+            heatGrad.addColorStop(0.7, `rgba(249, 115, 22, ${0.3 * pulse})`);
+            heatGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+            ctx.fillStyle = heatGrad;
+            ctx.beginPath(); ctx.arc(0, 0, 55, 0, Math.PI * 2); ctx.fill();
             
             // Flame particles
-            ctx.fillStyle = `rgba(249, 115, 22, ${0.8 * flicker})`;
-            for (let i = 0; i < 5; i++) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * flicker})`;
+            for (let i = 0; i < 8; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const r = 25 + Math.random() * 15;
-                ctx.beginPath(); ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, 2, 0, Math.PI * 2); ctx.fill();
+                const r = 20 + Math.random() * 30;
+                ctx.beginPath(); ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, 2.5, 0, Math.PI * 2); ctx.fill();
             }
             break;
 
         case 'crystal-vanguard':
             // Cyan Crystal Aura
-            ctx.strokeStyle = `rgba(6, 182, 212, ${0.7 * flicker})`;
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(6, 182, 212, ${0.8 * flicker})`;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#06b6d4';
             for (let i = 0; i < 4; i++) {
                 ctx.save();
-                ctx.rotate((now * 0.001) + (i * Math.PI / 2));
+                ctx.rotate((now * 0.0015) + (i * Math.PI / 2));
                 ctx.beginPath();
-                ctx.moveTo(35, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.lineTo(0, -10);
+                const s = 40 * pulse;
+                ctx.moveTo(s, 0); ctx.lineTo(0, 15); ctx.lineTo(-15, 0); ctx.lineTo(0, -15);
                 ctx.closePath();
                 ctx.stroke();
                 ctx.restore();
@@ -642,15 +766,15 @@ export function drawOverdriveAura(ctx: CanvasRenderingContext2D, chassis: Chassi
             // Vector-01 / Default Gold Aura
             const gold = '#f59e0b';
             const brightGold = '#fcd34d';
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 25;
             ctx.shadowColor = brightGold;
-            ctx.fillStyle = `rgba(245, 158, 11, ${0.2 * pulse})`;
-            ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = `rgba(252, 211, 77, ${0.8 * pulse})`;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([15, 10]);
-            ctx.lineDashOffset = now * -0.05;
-            ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = `rgba(245, 158, 11, ${0.3 * pulse})`;
+            ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = `rgba(252, 211, 77, ${0.9 * pulse})`;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([20, 15]);
+            ctx.lineDashOffset = now * -0.08;
+            ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.stroke();
             break;
     }
     ctx.restore();
@@ -881,6 +1005,57 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.restore();
     }
 
+    // --- FLUX MATRIX ACTIVE VISUALS ---
+    const fluxMatrix = abilities?.find(a => a.id === 'damageConverter' && a.state === 'active');
+    if (fluxMatrix) {
+        const elapsed = now - fluxMatrix.startTime;
+        
+        // Activation (Wind-up)
+        if (elapsed < 500) {
+            const p = elapsed / 500;
+            // Energy condensing
+            ctx.save();
+            ctx.scale(1 - (p * 0.1), 1 - (p * 0.1)); // Slight zoom in/implosion
+            ctx.strokeStyle = `rgba(139, 92, 246, ${p})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 80 * (1-p) + 45, 0, Math.PI*2); // Shrinking ring
+            ctx.stroke();
+            ctx.restore();
+        }
+        
+        // Active Shield Mesh
+        ctx.save();
+        const flicker = Math.random() * 0.1 + 0.9;
+        
+        // Hexagonal Mesh
+        ctx.strokeStyle = `rgba(167, 139, 250, ${0.3 * flicker})`; // Light violet
+        ctx.lineWidth = 1;
+        const r = 55; // Slightly larger than tank
+        
+        // Draw Hexagon
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2 + (now * 0.001); // Slow rotation
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        
+        // Inner Glow (Intensifies with charge)
+        const chargeIntensity = Math.min(1, (tank.damageConverterCharge || 0) / 50);
+        ctx.shadowColor = '#8b5cf6';
+        ctx.shadowBlur = 10 + (chargeIntensity * 20);
+        ctx.strokeStyle = `rgba(139, 92, 246, ${0.5 + chargeIntensity * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.stroke(); // Re-stroke with glow
+        
+        ctx.restore();
+    }
+
     // --- DAMAGE CONVERTER AURA (Flux Matrix) ---
     // If the tank has stored charge, visualize it as an aura
     if (tank.damageConverterCharge && tank.damageConverterCharge > 0) {
@@ -928,7 +1103,7 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
     ctx.rotate(degToRad(tank.angle));
 
     // --- OVERDRIVE AURA (Standard Tanks) ---
-    const overdrive = abilities?.find(a => a.id === 'overdrive' && a.state === 'active');
+    const overdrive = abilities?.find(a => (a.id === 'overdrive' || a.id === 'overdriveCore') && a.state === 'active');
     if (overdrive) {
         drawOverdriveAura(ctx, tank.chassis, now);
     }
@@ -1635,10 +1810,20 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
              for(let i=0; i<numSparks; i++) {
                  const angle = (i / numSparks) * Math.PI * 2 + (p * 2);
                  const dist = maxRadius * p * (0.8 + Math.random() * 0.4);
-                 ctx.fillStyle = '#ffff00';
+                 ctx.fillStyle = anim.color === '#0ea5e9' ? '#fff' : '#ffff00';
                  ctx.beginPath();
                  ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, Math.max(0, 3 * (1-p)), 0, Math.PI*2);
                  ctx.fill();
+                 
+                 // Add electrical arcs for EM Overload
+                 if (anim.color === '#0ea5e9' && Math.random() > 0.7) {
+                     ctx.strokeStyle = '#fff';
+                     ctx.lineWidth = 1;
+                     ctx.beginPath();
+                     ctx.moveTo(Math.cos(angle)*dist, Math.sin(angle)*dist);
+                     ctx.lineTo(Math.cos(angle)*dist + (Math.random()-0.5)*40, Math.sin(angle)*dist + (Math.random()-0.5)*40);
+                     ctx.stroke();
+                 }
              }
 
         } else if (anim.type === 'railgunBeam') {
@@ -1700,7 +1885,31 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                  ctx.beginPath(); ctx.moveTo(0, 0); let cx = 0; const steps = 10; for(let i=0; i<steps; i++) { cx += dist / steps; const cy = (Math.random() - 0.5) * 20; ctx.lineTo(cx, cy); } ctx.lineTo(dist, 0); ctx.stroke();
              }
         } else if (anim.type === 'dashTrail') {
-             ctx.globalAlpha = 1 - progress; ctx.fillStyle = anim.color || '#fff'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI*2); ctx.fill();
+             // LIGHTNING DASH TRAIL
+             ctx.globalAlpha = (1 - progress) * 0.8;
+             const color = anim.color || '#eab308';
+             ctx.fillStyle = color;
+             ctx.shadowBlur = 10;
+             ctx.shadowColor = color;
+             
+             // Draw a small "afterimage" or spark
+             const size = 15 * (1 - progress);
+             ctx.beginPath();
+             ctx.moveTo(size, 0);
+             ctx.lineTo(-size/2, size/2);
+             ctx.lineTo(-size/2, -size/2);
+             ctx.closePath();
+             ctx.fill();
+             
+             // Add tiny electric arcs
+             if (Math.random() > 0.5) {
+                 ctx.strokeStyle = '#fff';
+                 ctx.lineWidth = 1;
+                 ctx.beginPath();
+                 ctx.moveTo(0, 0);
+                 ctx.lineTo((Math.random()-0.5)*30, (Math.random()-0.5)*30);
+                 ctx.stroke();
+             }
         } else if (anim.type === 'shieldHit') {
              ctx.strokeStyle = anim.color || '#06b6d4'; ctx.lineWidth = 2; ctx.globalAlpha = 1 - progress; ctx.beginPath(); ctx.arc(0, 0, Math.max(0, 40 * progress + 30), 0, Math.PI * 2); ctx.stroke();
         } else if (anim.type === 'mortarStrike') {
@@ -1742,6 +1951,58 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                 ctx.ellipse(0, y, beamWidth, beamWidth * 0.3, 0, 0, Math.PI * 2);
                 ctx.stroke();
             }
+        } else if (anim.type === 'fluxRipple') {
+             // Hexagonal ripple on shield hit
+             const maxR = 60;
+             const p = progress;
+             ctx.strokeStyle = '#8b5cf6'; // Violet
+             ctx.lineWidth = 3 * (1-p);
+             ctx.globalAlpha = 1 - p;
+             ctx.shadowColor = '#8b5cf6';
+             ctx.shadowBlur = 10;
+             
+             // Draw Hexagon
+             ctx.beginPath();
+             const sides = 6;
+             const r = maxR * p + 30;
+             for (let i = 0; i < sides; i++) {
+                 const angle = (i / sides) * Math.PI * 2;
+                 const x = Math.cos(angle) * r;
+                 const y = Math.sin(angle) * r;
+                 if (i === 0) ctx.moveTo(x, y);
+                 else ctx.lineTo(x, y);
+             }
+             ctx.closePath();
+             ctx.stroke();
+             
+        } else if (anim.type === 'fluxShatter') {
+             // Shattering glass effect
+             const p = progress;
+             const numShards = 8;
+             ctx.fillStyle = 'rgba(139, 92, 246, 0.5)';
+             ctx.strokeStyle = '#fff';
+             ctx.shadowColor = '#8b5cf6';
+             ctx.shadowBlur = 15;
+             
+             for(let i=0; i<numShards; i++) {
+                 ctx.save();
+                 const angle = (i / numShards) * Math.PI * 2;
+                 const dist = p * 100;
+                 const rot = p * Math.PI; // Spin
+                 
+                 ctx.translate(Math.cos(angle) * dist, Math.sin(angle) * dist);
+                 ctx.rotate(rot);
+                 
+                 ctx.globalAlpha = 1 - p;
+                 ctx.beginPath();
+                 ctx.moveTo(0, -10);
+                 ctx.lineTo(8, 5);
+                 ctx.lineTo(-8, 5);
+                 ctx.closePath();
+                 ctx.fill();
+                 ctx.stroke();
+                 ctx.restore();
+             }
         }
         ctx.restore();
     });

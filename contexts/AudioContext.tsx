@@ -116,7 +116,64 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
     ] 
   },
   
+  // Flux Matrix
+  fluxMatrixActivate: {
+    layers: [
+      { type: 'sine', freqStart: 100, freqEnd: 800, gain: 0.2, duration: 0.5 }, // Charge up
+      { type: 'square', freqStart: 50, freqEnd: 200, gain: 0.15, duration: 0.4 }, // Tech pulse
+      { type: 'noise', filterFreq: 2000, filterSweep: { start: 500, end: 4000 }, gain: 0.1, duration: 0.5 } // Snap
+    ]
+  },
+  fluxMatrixHit: {
+    layers: [
+      { type: 'sine', freqStart: 400, freqEnd: 800, gain: 0.15, duration: 0.2 }, // Resonant catch
+      { type: 'triangle', freqStart: 200, freqEnd: 400, gain: 0.1, duration: 0.15 }
+    ]
+  },
+  fluxMatrixFire: {
+    layers: [
+      { type: 'sawtooth', freqStart: 100, freqEnd: 50, gain: 0.1, duration: 0.15 }, // Deeper tone
+      { type: 'noise', filterFreq: 3000, gain: 0.05, duration: 0.1 } // Crackle
+    ]
+  },
+  fluxMatrixEnd: {
+    layers: [
+      { type: 'sine', freqStart: 600, freqEnd: 100, gain: 0.2, duration: 0.4 }, // Collapse
+      { type: 'noise', filterFreq: 1000, filterSweep: { start: 1000, end: 100 }, gain: 0.15, duration: 0.3 } // Shatter
+    ]
+  },
+
   // Abilities
+  phaseShiftActivate: {
+    layers: [
+      { type: 'sine', freqStart: 200, freqEnd: 2000, gain: 0.15, duration: 0.3 }, // Warp up
+      { type: 'sawtooth', freqStart: 100, freqEnd: 400, gain: 0.1, duration: 0.3, modFreq: 20 } // Flutter
+    ]
+  },
+  phaseShiftEnd: {
+    layers: [
+      { type: 'sine', freqStart: 2000, freqEnd: 200, gain: 0.15, duration: 0.3 }, // Warp down
+      { type: 'square', freqStart: 400, freqEnd: 100, gain: 0.1, duration: 0.2 } // Thud
+    ]
+  },
+  flamethrowerStart: {
+    layers: [
+      { type: 'noise', filterFreq: 1000, gain: 0.2, duration: 0.3 }, // Ignition hiss
+      { type: 'sawtooth', freqStart: 50, freqEnd: 200, gain: 0.15, duration: 0.2 } // Spark
+    ]
+  },
+  chainLightning: {
+    layers: [
+      { type: 'sawtooth', freqStart: 800, freqEnd: 200, gain: 0.15, duration: 0.2 }, // Zap
+      { type: 'noise', filterFreq: 3000, gain: 0.1, duration: 0.1 } // Crackle
+    ]
+  },
+  toxicRoundsActivate: {
+    layers: [
+      { type: 'sine', freqStart: 400, freqEnd: 200, gain: 0.15, duration: 0.3 }, // Liquid slosh
+      { type: 'triangle', freqStart: 100, freqEnd: 50, gain: 0.1, duration: 0.3, modFreq: 10 } // Bubble
+    ]
+  },
   overdrive: { 
     layers: [
       { type: 'sawtooth', freqStart: 100, freqEnd: 1400, gain: 0.12, duration: 1.5 },
@@ -130,12 +187,20 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
         { type: 'triangle', freqStart: 100, freqEnd: 50, gain: 0.1, duration: 1.5, modFreq: 20 }
     ] 
   },
-  abilityReady: { layers: [{ type: 'sine', freqStart: 800, freqEnd: 1600, gain: 0.08, duration: 0.3 }] },
-  teslaZap: { 
+  beamFire: { 
     layers: [
-        { type: 'sawtooth', freqStart: 1200, freqEnd: 400, gain: 0.15, duration: 0.15, modFreq: 50 },
-        { type: 'square', freqStart: 2000, freqEnd: 1000, gain: 0.1, duration: 0.1 } 
+        { type: 'sawtooth', freqStart: 1200, freqEnd: 100, gain: 0.25, duration: 0.4 }, // Initial blast
+        { type: 'noise', filterFreq: 2000, gain: 0.2, duration: 0.5 }, // Hiss
+        { type: 'square', freqStart: 40, freqEnd: 20, gain: 0.3, duration: 0.6 }, // Sub rumble
+        { type: 'sine', freqStart: 2000, freqEnd: 4000, gain: 0.1, duration: 0.3, modFreq: 100 } // High tech whine
     ] 
+  },
+  beamCharge: {
+    layers: [
+        { type: 'sine', freqStart: 100, freqEnd: 2000, gain: 0.15, duration: 1.5 }, // Rising pitch
+        { type: 'sawtooth', freqStart: 50, freqEnd: 400, gain: 0.1, duration: 1.5, modFreq: 20 }, // Mechanical hum
+        { type: 'noise', filterFreq: 200, filterSweep: { start: 200, end: 4000 }, gain: 0.1, duration: 1.5 } // Energy swell
+    ]
   },
 
   // Boss
@@ -258,9 +323,50 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
   
   // Abilities Extra
   flamethrower: { layers: [{ type: 'noise', filterFreq: 800, filterSweep: { start: 800, end: 400 }, gain: 0.15, duration: 0.1 }] },
-  chainLightning: { layers: [{ type: 'sawtooth', freqStart: 2000, freqEnd: 500, gain: 0.1, duration: 0.1, modFreq: 100 }] },
-  prismGuard: { layers: [{ type: 'sine', freqStart: 1500, freqEnd: 1500, gain: 0.08, duration: 0.5, modFreq: 5 }] },
+  prismGuard: {
+    layers: [
+        { type: 'sine', freqStart: 1000, freqEnd: 1500, gain: 0.1, duration: 0.5, modFreq: 10 },
+        { type: 'triangle', freqStart: 2000, freqEnd: 1000, gain: 0.05, duration: 0.4 }
+    ]
+  },
+  damageConverter: {
+    layers: [
+        { type: 'sawtooth', freqStart: 400, freqEnd: 800, gain: 0.1, duration: 0.3, modFreq: 30 },
+        { type: 'sine', freqStart: 100, freqEnd: 200, gain: 0.2, duration: 0.4 }
+    ]
+  },
   nanoSwarm: { layers: [{ type: 'sine', freqStart: 2000, freqEnd: 2500, gain: 0.03, duration: 0.1, modFreq: 200 }] },
+  emOverload: {
+    layers: [
+        { type: 'noise', filterFreq: 4000, gain: 0.3, duration: 0.8 },
+        { type: 'square', freqStart: 100, freqEnd: 20, gain: 0.4, duration: 0.6 },
+        { type: 'sawtooth', freqStart: 2000, freqEnd: 100, gain: 0.2, duration: 0.4, modFreq: 50 }
+    ]
+  },
+  staticVeil: {
+    layers: [
+        { type: 'sine', freqStart: 200, freqEnd: 200, gain: 0.1, duration: 1.0, modFreq: 120 },
+        { type: 'noise', filterFreq: 1000, gain: 0.05, duration: 1.0 }
+    ]
+  },
+  voltLock: {
+    layers: [
+        { type: 'square', freqStart: 3000, freqEnd: 500, gain: 0.2, duration: 0.2 },
+        { type: 'sawtooth', freqStart: 100, freqEnd: 50, gain: 0.3, duration: 0.3 }
+    ]
+  },
+  conductiveField: {
+    layers: [
+        { type: 'noise', filterFreq: 3000, gain: 0.1, duration: 0.5, modFreq: 30 },
+        { type: 'triangle', freqStart: 400, freqEnd: 600, gain: 0.08, duration: 0.5 }
+    ]
+  },
+  lightningDash: {
+    layers: [
+        { type: 'sawtooth', freqStart: 2000, freqEnd: 4000, gain: 0.15, duration: 0.2 },
+        { type: 'noise', filterFreq: 5000, filterSweep: { start: 5000, end: 1000 }, gain: 0.2, duration: 0.3 }
+    ]
+  },
 };
 
 export class AudioController {
@@ -746,35 +852,171 @@ export class AudioController {
             }
         });
 
+    } else if (key === 'fluxMatrixLoop') {
+        // Flux Matrix Active Loop - Stabilization Hum
+        const osc1 = this.ctx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(100, t);
+        
+        const osc2 = this.ctx.createOscillator();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(200, t);
+        
+        const lfo = this.ctx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 8; // 8Hz wobble
+        
+        const lfoGain = this.ctx.createGain();
+        lfoGain.gain.value = 10;
+        
+        lfo.connect(lfoGain).connect(osc1.frequency);
+        lfo.connect(lfoGain).connect(osc2.frequency);
+        
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.15, t + 0.2);
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.sfxGain);
+        
+        osc1.start(t);
+        osc2.start(t);
+        lfo.start(t);
+        
+        this.activeLoops.set(key, {
+            gain,
+            stop: (stopTime: number) => {
+                try {
+                    osc1.stop(stopTime);
+                    osc2.stop(stopTime);
+                    lfo.stop(stopTime);
+                    
+                    const now = this.ctx.currentTime;
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
+            }
+        });
+
+    } else if (key === 'flamethrowerLoop') {
+        const noise = this.ctx.createBufferSource();
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        noise.buffer = buffer;
+        noise.loop = true;
+        
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(400, t);
+        
+        const lfo = this.ctx.createOscillator();
+        lfo.frequency.value = 15;
+        const lfoGain = this.ctx.createGain();
+        lfoGain.gain.value = 300;
+        
+        lfo.connect(lfoGain).connect(filter.frequency);
+        
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.2, t + 0.1);
+        
+        noise.connect(filter).connect(gain).connect(this.sfxGain);
+        
+        noise.start(t);
+        lfo.start(t);
+        
+        this.activeLoops.set(key, {
+            gain,
+            stop: (stopTime: number) => {
+                try {
+                    noise.stop(stopTime);
+                    lfo.stop(stopTime);
+                    const now = this.ctx.currentTime;
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
+            }
+        });
+
+    } else if (key === 'phaseShiftLoop') {
+        const osc1 = this.ctx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(100, t);
+        
+        const osc2 = this.ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(105, t); // Binaural beat
+        
+        const lfo = this.ctx.createOscillator();
+        lfo.frequency.value = 2;
+        const lfoGain = this.ctx.createGain();
+        lfoGain.gain.value = 0.5;
+        
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.1, t + 0.5);
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        lfo.connect(lfoGain).connect(gain.gain);
+        
+        gain.connect(this.sfxGain);
+        
+        osc1.start(t);
+        osc2.start(t);
+        lfo.start(t);
+        
+        this.activeLoops.set(key, {
+            gain,
+            stop: (stopTime: number) => {
+                try {
+                    osc1.stop(stopTime);
+                    osc2.stop(stopTime);
+                    lfo.stop(stopTime);
+                    const now = this.ctx.currentTime;
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
+            }
+        });
+
     } else if (key === 'beamCharge') {
         const osc1 = this.ctx.createOscillator();
         osc1.type = 'sawtooth'; 
         osc1.frequency.setValueAtTime(100, t);
-        osc1.frequency.exponentialRampToValueAtTime(2000, t + 1.5); 
+        osc1.frequency.exponentialRampToValueAtTime(3000, t + 1.5); // Higher peak
 
         const subOsc = this.ctx.createOscillator();
         subOsc.type = 'square';
-        subOsc.frequency.setValueAtTime(50, t);
-        subOsc.frequency.exponentialRampToValueAtTime(400, t + 1.5);
+        subOsc.frequency.setValueAtTime(40, t);
+        subOsc.frequency.exponentialRampToValueAtTime(200, t + 1.5);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.25, t + 0.5); 
-        gain.gain.exponentialRampToValueAtTime(0.4, t + 1.5);
+        gain.gain.linearRampToValueAtTime(0.3, t + 0.5); 
+        gain.gain.exponentialRampToValueAtTime(0.5, t + 1.5);
 
         const filter = this.ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.Q.value = 5;
-        filter.frequency.setValueAtTime(200, t);
-        filter.frequency.exponentialRampToValueAtTime(4000, t + 1.5);
+        filter.type = 'highpass'; // Changed to highpass for more "energy" feel
+        filter.Q.value = 10;
+        filter.frequency.setValueAtTime(100, t);
+        filter.frequency.exponentialRampToValueAtTime(2000, t + 1.5);
 
         const lfo = this.ctx.createOscillator();
         lfo.type = 'sine';
-        lfo.frequency.setValueAtTime(10, t);
-        lfo.frequency.linearRampToValueAtTime(30, t + 1.5);
+        lfo.frequency.setValueAtTime(15, t);
+        lfo.frequency.linearRampToValueAtTime(60, t + 1.5); // Faster modulation
         
         const lfoGain = this.ctx.createGain();
-        lfoGain.gain.value = 0.5; 
+        lfoGain.gain.value = 0.6; 
         
         osc1.connect(filter);
         subOsc.connect(filter);
@@ -792,9 +1034,58 @@ export class AudioController {
         this.activeLoops.set(key, {
             gain,
             stop: (stopTime: number) => {
-                osc1.stop(stopTime);
-                subOsc.stop(stopTime);
-                lfo.stop(stopTime);
+                try {
+                    osc1.stop(stopTime);
+                    subOsc.stop(stopTime);
+                    lfo.stop(stopTime);
+                    
+                    const now = this.ctx.currentTime;
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
+            }
+        });
+
+    } else if (key === 'beamFire') {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1500, t);
+        osc.frequency.exponentialRampToValueAtTime(400, t + 0.5);
+        
+        const noise = this.ctx.createBufferSource();
+        if (this.noiseBuffer) {
+            noise.buffer = this.noiseBuffer;
+            noise.loop = true;
+        }
+        
+        const noiseFilter = this.ctx.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+        noiseFilter.frequency.value = 2000;
+        
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.4, t + 0.05);
+        
+        osc.connect(gain);
+        noise.connect(noiseFilter).connect(gain);
+        gain.connect(this.sfxGain);
+        
+        osc.start(t);
+        noise.start(t);
+        
+        this.activeLoops.set(key, {
+            gain,
+            stop: (stopTime: number) => {
+                try {
+                    osc.stop(stopTime);
+                    noise.stop(stopTime);
+                    
+                    const now = this.ctx.currentTime;
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
             }
         });
         

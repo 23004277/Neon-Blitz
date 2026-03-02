@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "0.12.0",
+    "lucide-react": "^0.576.0",
+    "motion": "^12.34.4",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },

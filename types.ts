@@ -67,11 +67,7 @@ export interface Settings {
   credits: number;
   unlockedChassis: ChassisType[];
   equippedChassis: ChassisType;
-}
-
-export interface ChatMessage {
-  sender: 'user' | 'bot';
-  text: string;
+  tutorialCompleted: boolean;
 }
 
 export interface Vector {
@@ -124,7 +120,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam' | 'fluxRipple' | 'fluxShatter';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -413,6 +409,15 @@ export interface UpgradeOption {
   icon: string;
 }
 
+export interface StatusMessage {
+    id: string;
+    text: string;
+    type: 'buff' | 'debuff' | 'info' | 'kill';
+    color?: string;
+    duration?: number;
+    createdAt: number;
+}
+
 // Minimal state for the React Render loop (UI only)
 export interface UIState {
     playerHealth: number;
@@ -431,4 +436,5 @@ export interface UIState {
     damageConverterCharge: number;
     showUpgradeScreen?: boolean;
     availableUpgrades?: UpgradeOption[];
+    statusMessages: StatusMessage[];
 }

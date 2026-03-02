@@ -7,8 +7,6 @@ import { drawTank } from './game/canvasRenderer';
 
 interface HangarScreenProps {
   navigateTo: (screen: Screen) => void;
-  // Added this prop to control external UI elements
-  setChatbotVisible: (visible: boolean) => void;
 }
 
 interface ChassisInfo {
@@ -154,7 +152,7 @@ const StatBar: React.FC<{ label: string; value: number }> = ({ label, value }) =
 /* ---------------------------
    HangarScreen
    --------------------------- */
-const HangarScreen: React.FC<HangarScreenProps> = ({ navigateTo, setChatbotVisible }) => {
+const HangarScreen: React.FC<HangarScreenProps> = ({ navigateTo }) => {
   const { settings, setSettings } = useSettings();
   const audio = useAudio();
 
@@ -164,17 +162,6 @@ const HangarScreen: React.FC<HangarScreenProps> = ({ navigateTo, setChatbotVisib
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const animationRef = useRef<number | null>(null);
-
-  // --- CHATBOT VISIBILITY LOGIC ---
-  useEffect(() => {
-    // Hide chatbot on mount
-    setChatbotVisible(false);
-    
-    // Show chatbot again when leaving the Hangar
-    return () => {
-      setChatbotVisible(true);
-    };
-  }, [setChatbotVisible]);
 
   const isUnlocked = (id: ChassisType) => settings.unlockedChassis.includes(id);
   const isEquipped = (id: ChassisType) => settings.equippedChassis === id;

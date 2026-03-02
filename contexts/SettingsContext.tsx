@@ -22,6 +22,7 @@ export const defaultSettings: Settings = {
   credits: 0,
   unlockedChassis: ['vector-01'],
   equippedChassis: 'vector-01',
+  tutorialCompleted: false,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
