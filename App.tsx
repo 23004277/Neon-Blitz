@@ -99,7 +99,7 @@ const App: React.FC = () => {
       <AudioProvider>
         <div className="relative min-h-screen bg-stone-950 text-stone-100 overflow-hidden">
           {/* Custom Universal Cursor */}
-          <CustomCursor />
+          <CustomCursor currentScreen={currentScreen} />
 
           {/* Background futuristic grid */}
           <div className="absolute inset-0 z-0 bg-transparent bg-[linear-gradient(to_right,rgba(0,224,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,224,255,0.04)_1px,transparent_1px)] bg-[size:30px_30px]"></div>

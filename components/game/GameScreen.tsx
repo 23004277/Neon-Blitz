@@ -74,6 +74,11 @@ interface InternalGameState {
     // Cinematic State
     cutscene: CutsceneState;
     camera: { x: number, y: number, zoom: number };
+    
+    // Adrenaline Combo System
+    comboCount: number;
+    comboMultiplier: number;
+    lastKillTime: number;
 }
 
 const initialPlayer: TankType = {
@@ -222,13 +227,17 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             dialogueIndex: 0,
             targetCamera: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1 }
         },
-        camera: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1 }
+        camera: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/2, zoom: 1 },
+        comboCount: 0,
+        comboMultiplier: 1,
+        lastKillTime: 0
     });
 
     const [uiState, setUiState] = useState<UIState>({
         playerHealth: 10, playerMaxHealth: 10, playerShield: 0, playerScore: 0, playerKills: 0,
         wave: 1, enemiesRemaining: 0, gameOver: false, duelWon: false, abilities: [], damageConverterCharge: 0,
-        showUpgradeScreen: false, availableUpgrades: [], statusMessages: []
+        showUpgradeScreen: false, availableUpgrades: [], statusMessages: [],
+        comboCount: 0, comboMultiplier: 1, comboTimeLeft: 0
     });
 
     const addStatusMessage = (text: string, type: 'buff' | 'debuff' | 'info' | 'kill', color?: string, duration = 3000) => {
@@ -473,17 +482,50 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         const g = game.current;
         if (e.status === 'dying' || e.status === 'dead') return;
 
+        const now = Date.now();
+        
+        // Adrenaline Combo Logic
+        if (now - g.lastKillTime < 3000) {
+            g.comboCount += 1;
+            if (g.comboCount >= 3) g.comboMultiplier = 2;
+            if (g.comboCount >= 6) g.comboMultiplier = 3;
+            if (g.comboCount >= 10) g.comboMultiplier = 4;
+            if (g.comboCount >= 15) g.comboMultiplier = 5;
+            
+            // Announcer text
+            let comboText = '';
+            if (g.comboCount === 3) comboText = 'DOUBLE KILL!';
+            else if (g.comboCount === 6) comboText = 'RAMPAGE!';
+            else if (g.comboCount === 10) comboText = 'GODLIKE!';
+            
+            if (comboText) {
+                g.combatTexts.push({
+                    id: `ct-${Date.now()}`,
+                    text: comboText,
+                    createdAt: now,
+                    duration: 1500,
+                    color: '#facc15', // Yellow
+                    isCritical: true
+                });
+                audio.play('uiClick'); // Placeholder for announcer
+            }
+        } else {
+            g.comboCount = 1;
+            g.comboMultiplier = 1;
+        }
+        g.lastKillTime = now;
+
         g.killFeed.push({
-            id: `kf-${e.id}-${Date.now()}`,
+            id: `kf-${e.id}-${now}`,
             killerName: g.player.name,
             victimName: e.name,
             killerColor: g.player.color,
             victimColor: e.color,
-            createdAt: Date.now(),
+            createdAt: now,
         });
 
         e.status = 'dead';
-        game.current.player.score += 50;
+        g.player.score += 50 * g.comboMultiplier;
         // Score synced in update loop
         
         audio.play('explosion', e.position.x);
@@ -740,6 +782,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                  game.current.player.tier = 'intermediate';
                  game.current.abilities = [
                      { id: 'phaseShift', name: 'Phase Shift', keyBinding: 'Q', state: 'ready', duration: 3000, cooldown: 12000, startTime: 0 },
+                     { id: 'shadowStrike', name: 'Shadow Strike', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 8000, startTime: 0 },
+                     { id: 'smokeBomb', name: 'Smoke Bomb', keyBinding: 'R', state: 'ready', duration: 5000, cooldown: 15000, startTime: 0 },
+                     { id: 'venomBlade', name: 'Venom Blade', keyBinding: 'F', state: 'ready', duration: 4000, cooldown: 10000, startTime: 0 }
                  ];
              } else if (characterId === 'titan-ogre') {
                  game.current.player.maxHealth = 40;
@@ -1469,6 +1514,15 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
              g.lastSyncedCharge = g.player.damageConverterCharge || 0;
              setUiState(prev => ({...prev, damageConverterCharge: g.player.damageConverterCharge || 0}));
         }
+
+        // Sync Combo State
+        const comboTimeLeft = Math.max(0, 3000 - (now - g.lastKillTime));
+        setUiState(prev => ({
+            ...prev,
+            comboCount: g.comboCount,
+            comboMultiplier: g.comboMultiplier,
+            comboTimeLeft: g.comboCount > 1 ? comboTimeLeft : 0
+        }));
     };
     
     function updateAbilities(tank: TankType, now: number, timeScale: number) {
@@ -2903,10 +2957,20 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     function performMeleeAttack(player: TankType) {
         const now = Date.now();
-        const range = 100;
-        const arc = 120; // degrees
+        let range = 100;
+        let arc = 120; // degrees
         let damage = 15;
         
+        // Power-up modifications
+        const hasDualCannon = player.activePowerUps?.includes('dualCannon');
+        const hasMissiles = player.activePowerUps?.includes('homingMissiles');
+        
+        if (hasDualCannon) {
+            range = 150;
+            arc = 240;
+            damage *= 1.5;
+        }
+
         // Stealth Logic
         const wasStealthed = player.isStealthed;
         if (wasStealthed) {
@@ -2931,8 +2995,18 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             width: range,
             createdAt: now,
             duration: 300,
-            color: overdriveActive ? '#fbbf24' : '#eab308'
+            color: overdriveActive ? '#fbbf24' : (hasDualCannon ? '#ef4444' : '#eab308')
         });
+        
+        if (hasMissiles) {
+            // Spawn missiles on attack
+            const count = player.homingMissileCount || 2;
+            for(let i=0; i<Math.min(3, count); i++) {
+                setTimeout(() => {
+                    fireMissile(player.id, overdriveActive !== undefined, 1, false, false);
+                }, i * 100);
+            }
+        }
 
         // Hit Detection
         const targets = [...game.current.enemies, ...game.current.bosses];
@@ -3904,6 +3978,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         playerHealth={displayHealth}
                         playerMaxHealth={uiState.playerMaxHealth}
                         playerShield={uiState.playerShield}
+                        comboCount={uiState.comboCount}
+                        comboMultiplier={uiState.comboMultiplier}
+                        comboTimeLeft={uiState.comboTimeLeft}
                     />
                     <button 
                         onClick={() => navigateTo('main-menu')}

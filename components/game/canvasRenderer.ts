@@ -1136,10 +1136,39 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fillRect(-18 + float, -15, 4, 4);
             ctx.fillRect(-18 - float, 11, 4, 4);
         }
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#333'); ctx.fillRect(-8, -18, 10, 6); ctx.fillRect(-8, 12, 10, 6);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(3, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-6 + i*3, -15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(3, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-6 + i*3, 15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
         
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
-        ctx.fillStyle = cFill('#334155');
-        ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fill();
+
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = cFill('#334155');
+            ctx.fillRect(0, -6, 20, 4);
+            ctx.fillRect(0, 2, 20, 4);
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(16, -5, 4, 2);
+                ctx.fillRect(16, 3, 4, 2);
+            }
+        } else {
+            ctx.fillStyle = cFill('#334155');
+            ctx.fillRect(0, -2, 22, 4);
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(18, -1, 4, 2);
+            }
+        }
+
+        ctx.fillStyle = cFill('#1e293b');
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = primary;
         ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI*2); ctx.fill();
 
@@ -1168,12 +1197,32 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fillRect(-20, 5, 15, 15);
             ctx.fillRect(5, 5, 15, 15);
         }
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#1e293b'); ctx.fillRect(-15, -30, 15, 8); ctx.fillRect(-15, 22, 15, 8);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(4, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-12 + i*3.5, -26, 2, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(4, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-12 + i*3.5, 26, 2, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
         
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
-        ctx.fillStyle = '#1c1917';
-        ctx.strokeStyle = primary;
-        ctx.fillRect(0, -8, 35, 16);
-        ctx.strokeRect(0, -8, 35, 16);
+
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = '#1c1917';
+            ctx.strokeStyle = primary;
+            ctx.fillRect(0, -14, 35, 12);
+            ctx.strokeRect(0, -14, 35, 12);
+            ctx.fillRect(0, 2, 35, 12);
+            ctx.strokeRect(0, 2, 35, 12);
+        } else {
+            ctx.fillStyle = '#1c1917';
+            ctx.strokeStyle = primary;
+            ctx.fillRect(0, -8, 35, 16);
+            ctx.strokeRect(0, -8, 35, 16);
+        }
 
     } else if (tank.chassis === 'volt-strider') {
         // Volt Strider Visuals
@@ -1208,10 +1257,27 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.lineTo(-25, (Math.random()-0.5)*20);
             ctx.stroke();
         }
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#333'); ctx.fillRect(-10, -20, 10, 6); ctx.fillRect(-10, 14, 10, 6);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(3, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-8 + i*3, -17, 1.5, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(3, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-8 + i*3, 17, 1.5, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
         
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
-        ctx.fillStyle = primary;
-        ctx.fillRect(0, -2, 25, 4);
+        
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = primary;
+            ctx.fillRect(0, -6, 25, 4);
+            ctx.fillRect(0, 2, 25, 4);
+        } else {
+            ctx.fillStyle = primary;
+            ctx.fillRect(0, -2, 25, 4);
+        }
 
     } else if (tank.chassis === 'inferno-cobra') {
         // Inferno Cobra Visuals
@@ -1235,13 +1301,35 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#333'); ctx.fillRect(-12, -18, 12, 6); ctx.fillRect(-12, 12, 12, 6);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(3, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-9 + i*3.5, -15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(3, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-9 + i*3.5, 15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
         
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
-        ctx.fillStyle = '#7f1d1d';
-        ctx.fillRect(0, -6, 30, 12);
-        if (!isHit) {
-            ctx.fillStyle = '#fca5a5';
-            ctx.beginPath(); ctx.arc(25, 0, 4, 0, Math.PI*2); ctx.fill();
+        
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = '#7f1d1d';
+            ctx.fillRect(0, -10, 30, 8);
+            ctx.fillRect(0, 2, 30, 8);
+            if (!isHit) {
+                ctx.fillStyle = '#fca5a5';
+                ctx.beginPath(); ctx.arc(25, -6, 3, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(25, 6, 3, 0, Math.PI*2); ctx.fill();
+            }
+        } else {
+            ctx.fillStyle = '#7f1d1d';
+            ctx.fillRect(0, -6, 30, 12);
+            if (!isHit) {
+                ctx.fillStyle = '#fca5a5';
+                ctx.beginPath(); ctx.arc(25, 0, 4, 0, Math.PI*2); ctx.fill();
+            }
         }
 
     } else if (tank.chassis === 'crystal-vanguard') {
@@ -1276,15 +1364,36 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.closePath();
             ctx.fill();
         }
+
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#1e293b'); ctx.fillRect(-10, -18, 10, 6); ctx.fillRect(-10, 12, 10, 6);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(3, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-8 + i*3, -15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(3, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-8 + i*3, 15, 1.5, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
         
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
-        ctx.fillStyle = primary;
-        ctx.beginPath();
-        ctx.moveTo(0, -4);
-        ctx.lineTo(30, -8);
-        ctx.lineTo(30, 8);
-        ctx.lineTo(0, 4);
-        ctx.fill();
+        
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = primary;
+            ctx.beginPath();
+            ctx.moveTo(0, -8); ctx.lineTo(30, -10); ctx.lineTo(30, -2); ctx.lineTo(0, -4);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0, 4); ctx.lineTo(30, 2); ctx.lineTo(30, 10); ctx.lineTo(0, 8);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = primary;
+            ctx.beginPath();
+            ctx.moveTo(0, -4);
+            ctx.lineTo(30, -8);
+            ctx.lineTo(30, 8);
+            ctx.lineTo(0, 4);
+            ctx.fill();
+        }
 
     } else if (tank.chassis === 'rogue-scout') {
         // --- REMASTERED ROGUE SCOUT ---
@@ -1316,17 +1425,38 @@ export function drawTank(ctx: CanvasRenderingContext2D, tank: Tank, now: number,
             ctx.fillRect(-12, -3, 4, 6);
         }
 
+        if (tank.activePowerUps?.includes('homingMissiles')) {
+            ctx.save();
+            ctx.fillStyle = cFill('#1e293b'); ctx.fillRect(-8, -16, 8, 6); ctx.fillRect(-8, 10, 8, 6);
+            ctx.fillStyle = isHit ? '#fff' : '#ef4444';
+            const count = tank.homingMissileCount || 0;
+            for(let i=0; i<Math.min(2, Math.ceil(count/2)); i++) { ctx.beginPath(); ctx.arc(-6 + i*3, -13, 1.5, 0, Math.PI*2); ctx.fill(); }
+            for(let i=0; i<Math.min(2, Math.floor(count/2)); i++) { ctx.beginPath(); ctx.arc(-6 + i*3, 13, 1.5, 0, Math.PI*2); ctx.fill(); }
+            ctx.restore();
+        }
+
         ctx.rotate(degToRad(tank.turretAngle - tank.angle));
         
-        // Sleek Turret
-        ctx.fillStyle = cFill('#334155');
-        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill();
-        
-        // Sensor Eye
-        if (!isHit) {
-            ctx.fillStyle = primary;
-            ctx.shadowBlur = 10;
-            ctx.beginPath(); ctx.arc(3, 0, 2, 0, Math.PI*2); ctx.fill();
+        if (tank.activePowerUps?.includes('dualCannon')) {
+            ctx.fillStyle = cFill('#334155');
+            ctx.fillRect(0, -6, 18, 4);
+            ctx.fillRect(0, 2, 18, 4);
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(14, -5, 4, 2);
+                ctx.fillRect(14, 3, 4, 2);
+            }
+        } else {
+            // Sleek Turret
+            ctx.fillStyle = cFill('#334155');
+            ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill();
+            
+            // Sensor Eye
+            if (!isHit) {
+                ctx.fillStyle = primary;
+                ctx.shadowBlur = 10;
+                ctx.beginPath(); ctx.arc(3, 0, 2, 0, Math.PI*2); ctx.fill();
+            }
         }
 
     } else if (isPlayer && (!tank.chassis || tank.chassis === 'vector-01')) {

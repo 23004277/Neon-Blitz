@@ -134,7 +134,7 @@ export interface Animation {
   targetPosition?: Vector; // For beams and lightning
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'poisonGas' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard' | 'lightningDash' | 'emOverload' | 'staticVeil' | 'voltLock' | 'overdriveCore' | 'conductiveField' | 'counterSurge';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'poisonGas' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard' | 'lightningDash' | 'emOverload' | 'staticVeil' | 'voltLock' | 'overdriveCore' | 'conductiveField' | 'counterSurge' | 'shadowStrike' | 'smokeBomb' | 'venomBlade';
 
 export interface Ability {
   id: AbilityId;
@@ -240,6 +240,9 @@ export interface Tank extends RenderableEntity {
   isExhausted?: boolean;
   exhaustionStartTime?: number;
   
+  // Phantom Weaver Properties
+  shadowStrikeTarget?: Vector;
+  
   // AI Properties
   lastFireTime?: number;
   aiMode?: 'engage' | 'strafe' | 'flank';
@@ -267,7 +270,7 @@ export interface Telegraph {
 
 export interface EffectZone {
   id: string;
-  type: 'chrono' | 'poison' | 'fissure' | 'fire' | 'conductive';
+  type: 'chrono' | 'poison' | 'fissure' | 'fire' | 'conductive' | 'smoke';
   position: Vector;
   radius: number;
   createdAt: number;
@@ -437,4 +440,7 @@ export interface UIState {
     showUpgradeScreen?: boolean;
     availableUpgrades?: UpgradeOption[];
     statusMessages: StatusMessage[];
+    comboMultiplier?: number;
+    comboCount?: number;
+    comboTimeLeft?: number; // 0 to 1
 }

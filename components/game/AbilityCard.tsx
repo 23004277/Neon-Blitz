@@ -36,6 +36,10 @@ const THEMES: Record<string, { main: string; glow: string; bg: string }> = {
   scatterMines: { main: "#f97316", glow: "rgba(249,115,22,0.85)", bg: "rgba(249,115,22,0.06)" },
   nanoSwarm: { main: "#22c55e", glow: "rgba(34,197,94,0.85)", bg: "rgba(34,197,94,0.06)" },
   counterSurge: { main: "#fbbf24", glow: "rgba(251,191,36,0.85)", bg: "rgba(251,191,36,0.06)" }, // Amber
+  phaseShift: { main: "#a855f7", glow: "rgba(168,85,247,0.85)", bg: "rgba(168,85,247,0.06)" },
+  shadowStrike: { main: "#a855f7", glow: "rgba(168,85,247,0.85)", bg: "rgba(168,85,247,0.06)" },
+  smokeBomb: { main: "#64748b", glow: "rgba(100,116,139,0.85)", bg: "rgba(100,116,139,0.06)" },
+  venomBlade: { main: "#10b981", glow: "rgba(16,185,129,0.85)", bg: "rgba(16,185,129,0.06)" },
   default: { main: "#00F0FF", glow: "rgba(0,240,255,0.85)", bg: "rgba(0,240,255,0.06)" },
 };
 
@@ -56,6 +60,10 @@ const Icon = memo(({ name }: { name: string }) => {
     "Scatter Mines": <path d="M12 2l2.5 7h7.5l-6 4.5 2.5 7.5-6.5-4.5-6.5 4.5 2.5-7.5-6-4.5h7.5z" />,
     "Nano Swarm": <path d="M4 8a2 2 0 110-4 2 2 0 010 4zm16 0a2 2 0 110-4 2 2 0 010 4zm-8 4a2 2 0 110-4 2 2 0 010 4zm0 12a2 2 0 110-4 2 2 0 010 4zm8-4a2 2 0 110-4 2 2 0 010 4zM4 16a2 2 0 110-4 2 2 0 010 4z" />,
     Counter: <path d="M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3zm0 18c-3.15-1.05-6-4.96-6-9.14V6.3l6-2.25 6 2.25v4.56c0 4.18-2.85 8.09-6 9.14z" />, // Shield
+    "Phase Shift": <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 6a4 4 0 110 8 4 4 0 010-8z" />,
+    "Shadow Strike": <path d="M2 22l8-8 4 4 8-16-16 8 4 4-8 8z" />,
+    "Smoke Bomb": <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-3-9a3 3 0 106 0 3 3 0 00-6 0z" />,
+    "Venom Blade": <path d="M12 2L4 10l8 12 8-12L12 2zm0 18.5L5.5 10 12 3.5 18.5 10 12 20.5z" />,
     default: <circle cx="12" cy="12" r="8" />,
   };
 

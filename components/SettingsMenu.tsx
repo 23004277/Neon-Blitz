@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAudio } from '../contexts/AudioContext';
 import { ControlScheme, Language, Screen, ColorStyle } from '../types';
@@ -18,205 +18,235 @@ interface SettingsMenuProps {
 const SettingsMenu: React.FC<SettingsMenuProps> = ({ goBack, navigateTo }) => {
   const { settings, setSettings } = useSettings();
   const audio = useAudio();
+  const [activeTab, setActiveTab] = useState<'audio' | 'gameplay' | 'visuals' | 'controls'>('audio');
 
   const handleSettingChange = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     audio.play('uiToggle');
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleBack = () => {
+  const handleBackToMenu = () => {
       audio.play('uiBack');
       navigateTo('main-menu');
   }
 
-  const handleSave = () => {
+  const handleResume = () => {
       audio.play('uiClick');
       goBack();
   }
   
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden bg-[var(--color-background)]">
-      {/* Background Grid & Scanlines */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none">
-        <div className="grid-bg" />
-        <div className="bg-tech-lines absolute inset-0" />
-      </div>
-      <div className="scanlines absolute inset-0 pointer-events-none opacity-30" />
-
-      {/* Main Settings Panel */}
-      <div className="relative z-10 w-full max-w-2xl animate-fade-in bg-black/80 backdrop-blur-md border border-[var(--color-primary-magenta)]/30 p-8 clip-corner-2 box-glow-magenta">
-        {/* Decorative Corners */}
-        <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[var(--color-primary-magenta)]"></div>
-        <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[var(--color-primary-magenta)]"></div>
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[var(--color-primary-magenta)]"></div>
-        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[var(--color-primary-magenta)]"></div>
-        
-        {/* Title */}
-        <div className="flex items-center justify-between mb-10 border-b border-[var(--color-primary-magenta)]/30 pb-4">
-            <h1 className="font-orbitron text-4xl font-black uppercase text-[var(--color-primary-magenta)] text-glow-magenta tracking-widest">
-            SYSTEM CONFIG
-            </h1>
-            <div className="font-rajdhani text-xs text-[var(--color-primary-magenta)] opacity-70 text-right">
-                User: ADMIN<br/>
-                Mode: ROOT_ACCESS
-            </div>
-        </div>
-        
-        <div className="flex flex-col gap-y-8">
-          {/* Audio Section */}
-          <Fieldset legend="Audio Protocols">
-            <div className="space-y-6 pt-2">
-              <div className="grid grid-cols-2 gap-x-8">
-                <div className="flex justify-between items-center bg-white/5 p-3 rounded-sm border border-white/10">
-                  <div className="flex items-center space-x-3">
-                    <SoundIcon />
-                    <span className="font-rajdhani text-lg text-[var(--color-text-light)] font-bold uppercase tracking-wide">Sound FX</span>
-                  </div>
-                  <ToggleSwitch 
-                    checked={settings.sound}
-                    onChange={(checked) => handleSettingChange('sound', checked)}
-                  />
-                </div>
-                <div className="flex justify-between items-center bg-white/5 p-3 rounded-sm border border-white/10">
-                  <div className="flex items-center space-x-3">
-                    <MusicIcon />
-                    <span className="font-rajdhani text-lg text-[var(--color-text-light)] font-bold uppercase tracking-wide">Music</span>
-                  </div>
-                  <ToggleSwitch 
-                    checked={settings.music}
-                    onChange={(checked) => handleSettingChange('music', checked)}
-                  />
-                </div>
-              </div>
-              
-              <div className={`transition-all duration-300 ${settings.sound ? 'opacity-100' : 'opacity-50 grayscale pointer-events-none'}`}>
-                <Slider 
-                  label="Master Vol"
-                  value={settings.soundVolume}
-                  onChange={(e) => handleSettingChange('soundVolume', parseFloat(e.target.value))}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  disabled={!settings.sound}
-                />
-              </div>
-            </div>
-          </Fieldset>
-
-          {/* Gameplay Section */}
-           <Fieldset legend="Gameplay Parameters">
-            <div className="flex justify-between items-center bg-white/5 p-4 rounded-sm border border-white/10">
-              <div className="flex items-center space-x-3">
-                <ScreenShakeIcon />
-                <div className="flex flex-col">
-                    <span className="font-rajdhani text-lg text-[var(--color-text-light)] font-bold uppercase tracking-wide">Screen Shake</span>
-                    <span className="font-rajdhani text-xs text-stone-400">Enable for immersive impact feedback</span>
-                </div>
-              </div>
-              <ToggleSwitch 
-                checked={settings.screenShake}
-                onChange={(checked) => handleSettingChange('screenShake', checked)}
-              />
-            </div>
-          </Fieldset>
-
-          {/* Visual Customization Section */}
-          <Fieldset legend="Visual Customization">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              <div className="space-y-4">
-                <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block">Primary Color</label>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="color" 
-                    value={settings.playerColor}
-                    onChange={(e) => handleSettingChange('playerColor', e.target.value)}
-                    className="w-12 h-12 bg-transparent border border-white/20 rounded cursor-pointer"
-                  />
-                  <input 
-                    type="text" 
-                    value={settings.playerColor}
-                    onChange={(e) => handleSettingChange('playerColor', e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 p-2 font-mono text-xs text-white uppercase"
-                  />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block">Secondary Color</label>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="color" 
-                    value={settings.playerSecondaryColor}
-                    onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
-                    className="w-12 h-12 bg-transparent border border-white/20 rounded cursor-pointer"
-                  />
-                  <input 
-                    type="text" 
-                    value={settings.playerSecondaryColor}
-                    onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 p-2 font-mono text-xs text-white uppercase"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="mt-6">
-              <label className="font-rajdhani text-sm text-[var(--color-text-light)] font-bold uppercase tracking-wide block mb-3">Color Style</label>
-              <SegmentedControl
-                name="colorStyle"
-                options={['solid', 'gradient', 'neon', 'chrome']}
-                value={settings.playerColorStyle}
-                onChange={(val) => handleSettingChange('playerColorStyle', val as ColorStyle)}
-              />
-            </div>
-          </Fieldset>
-
-          {/* Controls & Language Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Fieldset legend="Input Scheme">
-              <SegmentedControl
-                name="controls"
-                options={Object.values(ControlScheme)}
-                value={settings.controls}
-                onChange={(val) => handleSettingChange('controls', val as ControlScheme)}
-              />
-            </Fieldset>
-
-            <Fieldset legend="Interface Lang">
-              <Select
-                value={settings.language}
-                onChange={(e) => handleSettingChange('language', e.target.value as Language)}
-              >
-                {Object.values(Language).map(lang => (
-                  <option key={lang} value={lang}>{lang}</option>
-                ))}
-              </Select>
-            </Fieldset>
+    <div className="fixed inset-0 bg-zinc-950 text-zinc-200 font-sans flex overflow-hidden z-50">
+      {/* Sidebar */}
+      <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col relative z-20 shadow-2xl">
+        <div className="p-8 border-b border-zinc-800">
+          <h1 className="font-orbitron text-2xl font-black uppercase text-white tracking-widest">
+            SETTINGS
+          </h1>
+          <div className="font-mono text-[10px] text-zinc-500 mt-2 uppercase tracking-widest">
+            System Configuration
           </div>
         </div>
+        <nav className="flex-1 p-4 space-y-2">
+          {['audio', 'gameplay', 'visuals', 'controls'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => {
+                audio.play('uiClick');
+                setActiveTab(tab as any);
+              }}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 uppercase tracking-wider ${activeTab === tab ? 'bg-zinc-800 text-white shadow-inner border border-zinc-700' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+        <div className="p-6 border-t border-zinc-800 space-y-3 bg-zinc-900/50">
+          <button 
+            onClick={handleResume}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(5,150,105,0.3)] hover:shadow-[0_0_25px_rgba(5,150,105,0.5)]"
+          >
+            Resume Game
+          </button>
+          <button 
+            onClick={handleBackToMenu}
+            className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-colors border border-zinc-700"
+          >
+            Main Menu
+          </button>
+        </div>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between mt-12 pt-6 border-t border-white/10">
-          <button 
-            onClick={handleBack}
-            className="font-orbitron uppercase text-xs font-bold tracking-wider px-6 py-3 bg-transparent border border-stone-600 text-stone-400 hover:bg-stone-800 hover:text-white transition-all duration-300"
-          >
-            &lt; Return to Hub
-          </button>
-          <button 
-            onClick={handleSave}
-            className="font-orbitron uppercase text-sm font-bold tracking-wider px-10 py-3 bg-[var(--color-primary-magenta)] text-white shadow-[0_0_20px_rgba(255,0,60,0.4)] hover:bg-[var(--color-primary-magenta)] hover:shadow-[0_0_30px_rgba(255,0,60,0.6)] transition-all duration-300 clip-corner-4"
-          >
-            Save & Execute
-          </button>
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto p-12 bg-zinc-950 relative">
+        {/* Background Grid & Scanlines */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          <div className="grid-bg" />
+        </div>
+        
+        <div className="max-w-2xl mx-auto animate-fade-in relative z-10">
+          
+          {activeTab === 'audio' && (
+            <div className="space-y-8">
+              <div>
+                <h2 className="font-orbitron text-2xl font-bold text-white mb-6 tracking-wide border-b border-zinc-800 pb-4">AUDIO PROTOCOLS</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-5 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-zinc-800 rounded-lg text-zinc-400"><SoundIcon /></div>
+                      <div>
+                        <div className="font-bold text-white uppercase tracking-wider text-sm">Sound Effects</div>
+                        <div className="text-xs text-zinc-500 mt-1">Combat and UI sounds</div>
+                      </div>
+                    </div>
+                    <ToggleSwitch checked={settings.sound} onChange={(c) => handleSettingChange('sound', c)} />
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-5 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-zinc-800 rounded-lg text-zinc-400"><MusicIcon /></div>
+                      <div>
+                        <div className="font-bold text-white uppercase tracking-wider text-sm">Music</div>
+                        <div className="text-xs text-zinc-500 mt-1">Background tracks</div>
+                      </div>
+                    </div>
+                    <ToggleSwitch checked={settings.music} onChange={(c) => handleSettingChange('music', c)} />
+                  </div>
+
+                  <div className={`p-6 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm transition-opacity ${settings.sound ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                    <Slider 
+                      label="Master Volume"
+                      value={settings.soundVolume}
+                      onChange={(e) => handleSettingChange('soundVolume', parseFloat(e.target.value))}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!settings.sound}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'gameplay' && (
+            <div className="space-y-8 animate-fade-in">
+              <div>
+                <h2 className="font-orbitron text-2xl font-bold text-white mb-6 tracking-wide border-b border-zinc-800 pb-4">GAMEPLAY PARAMETERS</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-5 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-zinc-800 rounded-lg text-zinc-400"><ScreenShakeIcon /></div>
+                      <div>
+                        <div className="font-bold text-white uppercase tracking-wider text-sm">Screen Shake</div>
+                        <div className="text-xs text-zinc-500 mt-1">Immersive impact feedback</div>
+                      </div>
+                    </div>
+                    <ToggleSwitch checked={settings.screenShake} onChange={(c) => handleSettingChange('screenShake', c)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'visuals' && (
+            <div className="space-y-8 animate-fade-in">
+              <div>
+                <h2 className="font-orbitron text-2xl font-bold text-white mb-6 tracking-wide border-b border-zinc-800 pb-4">VISUAL CUSTOMIZATION</h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="p-5 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm space-y-4">
+                    <label className="font-bold text-white uppercase tracking-wider text-sm block">Primary Color</label>
+                    <div className="flex items-center gap-4">
+                      <input 
+                        type="color" 
+                        value={settings.playerColor}
+                        onChange={(e) => handleSettingChange('playerColor', e.target.value)}
+                        className="w-12 h-12 bg-transparent border border-zinc-700 rounded cursor-pointer"
+                      />
+                      <input 
+                        type="text" 
+                        value={settings.playerColor}
+                        onChange={(e) => handleSettingChange('playerColor', e.target.value)}
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 font-mono text-xs text-white uppercase focus:outline-none focus:border-zinc-600"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="p-5 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm space-y-4">
+                    <label className="font-bold text-white uppercase tracking-wider text-sm block">Secondary Color</label>
+                    <div className="flex items-center gap-4">
+                      <input 
+                        type="color" 
+                        value={settings.playerSecondaryColor}
+                        onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
+                        className="w-12 h-12 bg-transparent border border-zinc-700 rounded cursor-pointer"
+                      />
+                      <input 
+                        type="text" 
+                        value={settings.playerSecondaryColor}
+                        onChange={(e) => handleSettingChange('playerSecondaryColor', e.target.value)}
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 font-mono text-xs text-white uppercase focus:outline-none focus:border-zinc-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                  <label className="font-bold text-white uppercase tracking-wider text-sm block mb-4">Color Style</label>
+                  <SegmentedControl
+                    name="colorStyle"
+                    options={['solid', 'gradient', 'neon', 'chrome']}
+                    value={settings.playerColorStyle}
+                    onChange={(val) => handleSettingChange('playerColorStyle', val as ColorStyle)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'controls' && (
+            <div className="space-y-8 animate-fade-in">
+              <div>
+                <h2 className="font-orbitron text-2xl font-bold text-white mb-6 tracking-wide border-b border-zinc-800 pb-4">INPUT & LOCALIZATION</h2>
+                
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="p-6 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                    <label className="font-bold text-white uppercase tracking-wider text-sm block mb-4">Input Scheme</label>
+                    <SegmentedControl
+                      name="controls"
+                      options={Object.values(ControlScheme)}
+                      value={settings.controls}
+                      onChange={(val) => handleSettingChange('controls', val as ControlScheme)}
+                    />
+                  </div>
+
+                  <div className="p-6 bg-zinc-900/80 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                    <label className="font-bold text-white uppercase tracking-wider text-sm block mb-4">Interface Language</label>
+                    <Select
+                      value={settings.language}
+                      onChange={(e) => handleSettingChange('language', e.target.value as Language)}
+                    >
+                      {Object.values(Language).map(lang => (
+                        <option key={lang} value={lang}>{lang}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
       <style>{`
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in {
-          animation: fade-in 0.8s ease-out forwards;
+          animation: fade-in 0.3s ease-out forwards;
         }
       `}</style>
     </div>

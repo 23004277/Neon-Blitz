@@ -156,6 +156,24 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
       { type: 'square', freqStart: 400, freqEnd: 100, gain: 0.1, duration: 0.2 } // Thud
     ]
   },
+  shadowStrike: {
+    layers: [
+      { type: 'noise', filterFreq: 3000, gain: 0.15, duration: 0.2 }, // Whoosh
+      { type: 'triangle', freqStart: 800, freqEnd: 100, gain: 0.2, duration: 0.15 } // Impact
+    ]
+  },
+  smokeBomb: {
+    layers: [
+      { type: 'noise', filterFreq: 800, gain: 0.25, duration: 0.6 }, // Pfff
+      { type: 'sine', freqStart: 200, freqEnd: 50, gain: 0.15, duration: 0.4 } // Thud
+    ]
+  },
+  venomBlade: {
+    layers: [
+      { type: 'sawtooth', freqStart: 1200, freqEnd: 400, gain: 0.1, duration: 0.2 }, // Slice
+      { type: 'noise', filterFreq: 2000, gain: 0.1, duration: 0.3 } // Sizzle
+    ]
+  },
   flamethrowerStart: {
     layers: [
       { type: 'noise', filterFreq: 1000, gain: 0.2, duration: 0.3 }, // Ignition hiss
@@ -367,6 +385,53 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
         { type: 'noise', filterFreq: 5000, filterSweep: { start: 5000, end: 1000 }, gain: 0.2, duration: 0.3 }
     ]
   },
+  abilityReady: {
+    layers: [
+        { type: 'sine', freqStart: 800, freqEnd: 1200, gain: 0.1, duration: 0.3 },
+        { type: 'triangle', freqStart: 400, freqEnd: 600, gain: 0.05, duration: 0.2 }
+    ]
+  },
+  teslaZap: {
+    layers: [
+        { type: 'sawtooth', freqStart: 1500, freqEnd: 500, gain: 0.15, duration: 0.15 },
+        { type: 'noise', filterFreq: 4000, gain: 0.1, duration: 0.1 }
+    ]
+  },
+  parrySuccess: {
+    layers: [
+        { type: 'square', freqStart: 2000, freqEnd: 3000, gain: 0.1, duration: 0.2 },
+        { type: 'sine', freqStart: 1000, freqEnd: 500, gain: 0.15, duration: 0.3 }
+    ]
+  },
+  parryReady: {
+    layers: [
+        { type: 'sine', freqStart: 600, freqEnd: 800, gain: 0.1, duration: 0.2 }
+    ]
+  },
+  mineDeploy: {
+    layers: [
+        { type: 'triangle', freqStart: 400, freqEnd: 200, gain: 0.1, duration: 0.2 },
+        { type: 'noise', filterFreq: 1000, gain: 0.05, duration: 0.15 }
+    ]
+  },
+  impact_heavy: {
+    layers: [
+        { type: 'square', freqStart: 100, freqEnd: 20, gain: 0.3, duration: 0.3 },
+        { type: 'noise', filterFreq: 500, gain: 0.2, duration: 0.2 }
+    ]
+  },
+  glassBreak: {
+    layers: [
+        { type: 'noise', filterFreq: 5000, filterSweep: { start: 5000, end: 1000 }, gain: 0.2, duration: 0.3 },
+        { type: 'sawtooth', freqStart: 2000, freqEnd: 3000, gain: 0.1, duration: 0.1 }
+    ]
+  },
+  fireIgnite: {
+    layers: [
+        { type: 'noise', filterFreq: 2000, filterSweep: { start: 2000, end: 500 }, gain: 0.2, duration: 0.4 },
+        { type: 'sawtooth', freqStart: 100, freqEnd: 200, gain: 0.1, duration: 0.2 }
+    ]
+  }
 };
 
 export class AudioController {
@@ -1048,48 +1113,6 @@ export class AudioController {
         });
 
     } else if (key === 'beamFire') {
-        const osc = this.ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(1500, t);
-        osc.frequency.exponentialRampToValueAtTime(400, t + 0.5);
-        
-        const noise = this.ctx.createBufferSource();
-        if (this.noiseBuffer) {
-            noise.buffer = this.noiseBuffer;
-            noise.loop = true;
-        }
-        
-        const noiseFilter = this.ctx.createBiquadFilter();
-        noiseFilter.type = 'lowpass';
-        noiseFilter.frequency.value = 2000;
-        
-        const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.4, t + 0.05);
-        
-        osc.connect(gain);
-        noise.connect(noiseFilter).connect(gain);
-        gain.connect(this.sfxGain);
-        
-        osc.start(t);
-        noise.start(t);
-        
-        this.activeLoops.set(key, {
-            gain,
-            stop: (stopTime: number) => {
-                try {
-                    osc.stop(stopTime);
-                    noise.stop(stopTime);
-                    
-                    const now = this.ctx.currentTime;
-                    gain.gain.cancelScheduledValues(now);
-                    gain.gain.setValueAtTime(gain.gain.value, now);
-                    gain.gain.linearRampToValueAtTime(0, stopTime);
-                } catch(e) {}
-            }
-        });
-        
-    } else if (key === 'beamFire') {
         const leadOsc = this.ctx.createOscillator();
         leadOsc.type = 'sawtooth';
         leadOsc.frequency.setValueAtTime(800, t);
@@ -1133,10 +1156,17 @@ export class AudioController {
         this.activeLoops.set(key, {
             gain: masterGain,
             stop: (stopTime: number) => {
-                leadOsc.stop(stopTime);
-                bodyOsc.stop(stopTime);
-                fmOsc.stop(stopTime);
-                noise.stop(stopTime);
+                try {
+                    leadOsc.stop(stopTime);
+                    bodyOsc.stop(stopTime);
+                    fmOsc.stop(stopTime);
+                    noise.stop(stopTime);
+                    
+                    const now = this.ctx.currentTime;
+                    masterGain.gain.cancelScheduledValues(now);
+                    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+                    masterGain.gain.linearRampToValueAtTime(0, stopTime);
+                } catch(e) {}
             }
         });
     } else if (key === 'omniCharge') {

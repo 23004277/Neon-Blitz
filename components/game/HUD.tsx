@@ -6,9 +6,12 @@ interface HUDProps {
   playerHealth: number;
   playerMaxHealth: number;
   playerShield: number;
+  comboCount?: number;
+  comboMultiplier?: number;
+  comboTimeLeft?: number;
 }
 
-const HUD: React.FC<HUDProps> = ({ enemiesRemaining, playerHealth, playerMaxHealth, playerShield }) => {
+const HUD: React.FC<HUDProps> = ({ enemiesRemaining, playerHealth, playerMaxHealth, playerShield, comboCount = 0, comboMultiplier = 1, comboTimeLeft = 0 }) => {
   const [isFlashing, setIsFlashing] = useState(false);
   const prevHealthRef = useRef(playerHealth);
   const healthPercent = (playerHealth / playerMaxHealth) * 100;
@@ -42,6 +45,25 @@ const HUD: React.FC<HUDProps> = ({ enemiesRemaining, playerHealth, playerMaxHeal
             <div className="absolute inset-0 bg-red-500 w-full animate-[shimmer_2s_infinite]" />
         </div>
       </div>
+
+      {/* Adrenaline Combo */}
+      {comboCount > 1 && (
+        <div className={`combo-meter flex flex-col gap-1 w-48 p-3 bg-black/60 border-l-4 border-yellow-500 backdrop-blur-md transition-all duration-200 ${comboMultiplier > 2 ? 'animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.3)]' : ''}`}>
+          <div className="flex justify-between items-end">
+            <span className="text-[10px] font-bold text-yellow-500 tracking-widest uppercase">Adrenaline</span>
+            <span className="text-sm font-black text-white">x{comboMultiplier}</span>
+          </div>
+          <div className="text-2xl font-black text-yellow-400 leading-none tracking-tighter italic">
+            {comboCount} HITS
+          </div>
+          <div className="h-1.5 bg-stone-800 relative overflow-hidden mt-1">
+            <div 
+              className="h-full bg-yellow-500 transition-all duration-100"
+              style={{ width: `${(comboTimeLeft / 3000) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Vitals */}
       <div className={`vitals-container flex flex-col gap-2 w-72 p-4 bg-black/60 border-l-4 transition-all duration-200 backdrop-blur-md ${isFlashing ? 'border-red-500 bg-red-500/20' : 'border-cyan-500/40'}`}>
