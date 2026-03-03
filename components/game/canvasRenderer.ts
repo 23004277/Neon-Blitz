@@ -2133,6 +2133,68 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                  ctx.stroke();
                  ctx.restore();
              }
+        } else if (anim.type === 'shadowSlice') {
+            const p = progress;
+            const size = anim.width || 100;
+            ctx.rotate(anim.angle || 0);
+            
+            ctx.globalAlpha = 1 - p;
+            ctx.fillStyle = anim.color || '#a855f7';
+            ctx.shadowColor = anim.color || '#a855f7';
+            ctx.shadowBlur = 20;
+            
+            // Crescent slice shape
+            ctx.beginPath();
+            ctx.arc(0, 0, size * p, -Math.PI/2, Math.PI/2);
+            ctx.arc(0, 0, size * p * 0.8, Math.PI/2, -Math.PI/2, true);
+            ctx.fill();
+            
+            // Inner bright core
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(0, 0, size * p * 0.9, -Math.PI/3, Math.PI/3);
+            ctx.arc(0, 0, size * p * 0.85, Math.PI/3, -Math.PI/3, true);
+            ctx.fill();
+        } else if (anim.type === 'smokeCloud') {
+            const p = progress;
+            const size = anim.width || 150;
+            ctx.globalAlpha = (1 - p) * 0.8;
+            ctx.fillStyle = anim.color || '#64748b';
+            
+            for (let i = 0; i < 5; i++) {
+                const angle = (i / 5) * Math.PI * 2 + p;
+                const dist = p * size * 0.5;
+                ctx.beginPath();
+                ctx.arc(Math.cos(angle) * dist, Math.sin(angle) * dist, size * 0.3 * (1 + p), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (anim.type === 'venomSlice') {
+            const p = progress;
+            const size = anim.width || 120;
+            ctx.rotate(anim.angle || 0);
+            
+            ctx.globalAlpha = 1 - p;
+            ctx.strokeStyle = anim.color || '#10b981';
+            ctx.lineWidth = 8 * (1 - p);
+            ctx.shadowColor = anim.color || '#10b981';
+            ctx.shadowBlur = 15;
+            
+            // X-slash or single slash
+            ctx.beginPath();
+            ctx.moveTo(-size/2, -size/2 * p);
+            ctx.lineTo(size/2, size/2 * p);
+            ctx.stroke();
+            
+            // Splatter particles
+            ctx.fillStyle = anim.color || '#10b981';
+            for (let i = 0; i < 4; i++) {
+                const px = (Math.random() - 0.5) * size * p;
+                const py = (Math.random() - 0.5) * size * p;
+                ctx.beginPath();
+                ctx.arc(px, py, 3 * (1-p), 0, Math.PI*2);
+                ctx.fill();
+            }
         }
         ctx.restore();
     });

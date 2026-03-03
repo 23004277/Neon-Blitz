@@ -104,6 +104,9 @@ export interface Projectile {
   isVampiric?: boolean; // New: Heals owner on hit
   isNapalm?: boolean; // New: Creates fire zone on impact
   isPoisonContainer?: boolean; // New: Creates poison zone on impact
+  isSmokeBomb?: boolean;
+  detonateTime?: number;
+  radius?: number;
   color?: string;
   secondaryColor?: string;
   colorStyle?: ColorStyle;
@@ -120,7 +123,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam' | 'fluxRipple' | 'fluxShatter';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam' | 'fluxRipple' | 'fluxShatter' | 'shadowSlice' | 'smokeCloud' | 'venomSlice';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -182,7 +185,14 @@ export interface VoltLockStatusEffect {
   duration: number;
 }
 
-export type StatusEffect = PoisonStatusEffect | StunStatusEffect | ConductiveStatusEffect | VoltLockStatusEffect;
+export interface ConfusedStatusEffect {
+  type: 'confused';
+  ownerId: string;
+  startTime: number;
+  duration: number;
+}
+
+export type StatusEffect = PoisonStatusEffect | StunStatusEffect | ConductiveStatusEffect | VoltLockStatusEffect | ConfusedStatusEffect;
 
 
 export interface RenderableEntity {

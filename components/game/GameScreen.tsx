@@ -1123,9 +1123,26 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             return true;
         });
         
-        // --- PROCESS EFFECT ZONES (Fissure, Fire & Poison & Conductive) ---
+        // --- PROCESS EFFECT ZONES (Fissure, Fire & Poison & Conductive & Smoke) ---
         g.effectZones.forEach(zone => {
-             if (zone.type === 'fissure' || zone.type === 'fire' || zone.type === 'poison' || zone.type === 'conductive') {
+             if (zone.type === 'smoke') {
+                 // Confuse AI tanks
+                 const targets = [...g.enemies, ...g.bosses].filter(tgt => tgt && tgt.status === 'active');
+                 targets.forEach(tgt => {
+                     if (!tgt) return;
+                     const d = Math.hypot(tgt.position.x - zone.position.x, tgt.position.y - zone.position.y);
+                     if (d < zone.radius) {
+                         if (!tgt.statusEffects) tgt.statusEffects = [];
+                         const existing = tgt.statusEffects.find(e => e.type === 'confused');
+                         if (existing) {
+                             existing.duration = 1000;
+                             existing.startTime = now;
+                         } else {
+                             tgt.statusEffects.push({ type: 'confused', ownerId: zone.ownerId, startTime: now, duration: 1000 });
+                         }
+                     }
+                 });
+             } else if (zone.type === 'fissure' || zone.type === 'fire' || zone.type === 'poison' || zone.type === 'conductive') {
                  if (!zone.lastTick || now - zone.lastTick > 500) { // Tick every 500ms
                      zone.lastTick = now;
                      // Damage enemies in zone
@@ -1309,6 +1326,36 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         // Update Projectiles & Collisions
         g.projectiles = g.projectiles.filter(p => {
+            // Smoke Bomb Detonation
+            if (p.isSmokeBomb) {
+                if (now >= (p.detonateTime || 0)) {
+                    audio.play('smokeBomb');
+                    g.effectZones.push({
+                        id: `smoke-cloud-${now}-${Math.random()}`,
+                        type: 'smoke',
+                        position: { ...p.position },
+                        radius: 150,
+                        createdAt: now,
+                        duration: 5000,
+                        ownerId: p.ownerId,
+                        damagePerTick: 0
+                    });
+                    g.animations.push({
+                        id: `smoke-anim-${now}`,
+                        type: 'smokeCloud',
+                        position: { ...p.position },
+                        createdAt: now,
+                        duration: 5000,
+                        width: 150,
+                        color: '#64748b'
+                    });
+                    return false;
+                }
+                // Slow down over time
+                p.velocity.x *= 0.95;
+                p.velocity.y *= 0.95;
+            }
+
             // Poison Gas Impact
             if (p.isPoisonContainer) {
                 // Check collision with walls or enemies or max range
@@ -3880,6 +3927,38 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                         fireMissile(tank.id, false, 0.5, false, overdriveActive);
                     }, i * 100); // Stagger the missiles
                 }
+            } else if (id === 'shadowStrike') {
+                if (isPlayer) {
+                    audio.play('shadowStrike');
+                    addStatusMessage('SHADOW STRIKE', 'info', '#a855f7');
+                }
+                // Initial slice is handled in update loop
+            } else if (id === 'smokeBomb') {
+                if (isPlayer) {
+                    audio.play('uiClick'); // Placeholder for throw sound
+                    addStatusMessage('SMOKE BOMB', 'info', '#64748b');
+                }
+                // Spawn smoke bomb projectile
+                const speed = 15;
+                const angle = degToRad(tank.turretAngle);
+                game.current.projectiles.push({
+                    id: `smoke-${Date.now()}`,
+                    ownerId: tank.id,
+                    position: { x: tank.position.x + Math.cos(angle) * 30, y: tank.position.y + Math.sin(angle) * 30 },
+                    velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+                    damage: 0,
+                    radius: 8,
+                    color: '#64748b',
+                    createdAt: Date.now(),
+                    isSmokeBomb: true,
+                    detonateTime: Date.now() + 2000
+                });
+            } else if (id === 'venomBlade') {
+                if (isPlayer) {
+                    audio.play('venomBlade');
+                    addStatusMessage('VENOM BLADE', 'info', '#10b981');
+                }
+                // Initial slice is handled in update loop
             }
             if (isPlayer) setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
         }
@@ -4061,8 +4140,10 @@ function updateEnemyAI(e: TankType, player: TankType, allEnemies: TankType[], po
     let distToTarget = Math.hypot(player.position.x - e.position.x, player.position.y - e.position.y);
     
     const dazedEffect = e.statusEffects?.find(eff => eff.type === 'voltLock');
-    if (dazedEffect) {
-        // Find nearest ally to attack
+    const confusedEffect = e.statusEffects?.find(eff => eff.type === 'confused');
+    
+    if (dazedEffect || confusedEffect) {
+        // Find nearest ally to attack or just wander
         let minDist = 9999;
         let nearestAlly: TankType | null = null;
         allEnemies.forEach(ally => {
@@ -4078,6 +4159,11 @@ function updateEnemyAI(e: TankType, player: TankType, allEnemies: TankType[], po
             targetPos = (nearestAlly as TankType).position;
             targetAngle = Math.atan2(targetPos.y - e.position.y, targetPos.x - e.position.x) * (180/Math.PI);
             distToTarget = minDist;
+        } else if (confusedEffect) {
+            // Wander randomly if confused and no allies nearby
+            targetPos = { x: e.position.x + (Math.random() - 0.5) * 100, y: e.position.y + (Math.random() - 0.5) * 100 };
+            targetAngle = Math.atan2(targetPos.y - e.position.y, targetPos.x - e.position.x) * (180/Math.PI);
+            distToTarget = 100;
         }
     }
 
