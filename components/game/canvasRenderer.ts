@@ -1,5 +1,5 @@
 
-import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState, Barrel, ChassisType, ColorStyle } from '../../types';
+import type { Tank, Projectile, Wall, Vector, Animation, PowerUp, Ability, Boss, Telegraph, EffectZone, DamageNumber, DamageIndicator, Minion, StatusEffect, PoisonStatusEffect, CutsceneState, Barrel, ChassisType, ColorStyle, CombatText } from '../../types';
 
 export const degToRad = (d: number) => d * (Math.PI / 180);
 
@@ -38,6 +38,7 @@ const assetMap: Record<string, string> = {
     'regensule': 'TemporaryPowerups/HealCapsule.png',
     'lifeLeech': 'TemporaryPowerups/LifeLeech.png',
     'homingMissiles': 'TemporaryPowerups/Rocket.png',
+    'smokeBomb': 'TemporaryPowerups/SmokeBomb.png',
     // Fallback for types without explicit assets
     'reflectorField': 'TemporaryPowerups/Shield.png' 
 };
@@ -339,40 +340,132 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
     ctx.shadowColor = isHit ? '#ffffff' : bossColor;
     ctx.shadowBlur = isHit ? 20 : 15;
 
-    ctx.fillStyle = '#1c1917';
-    ctx.fillRect(-45, -50, 30, 100); 
-    
-    ctx.fillStyle = '#450a0a'; 
-    ctx.strokeStyle = baseColor;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    const s = 40;
-    ctx.moveTo(s, 0);
-    ctx.lineTo(s*0.7, s*0.7);
-    ctx.lineTo(0, s);
-    ctx.lineTo(-s*0.7, s*0.7);
-    ctx.lineTo(-s, 0);
-    ctx.lineTo(-s*0.7, -s*0.7);
-    ctx.lineTo(0, -s);
-    ctx.lineTo(s*0.7, -s*0.7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    
-    if (!isHit) {
-        const isCritical = boss.attackState.currentAttack === 'lastStand';
-        const pulse = Math.abs(Math.sin(now * (isCritical ? 0.02 : 0.005)));
+    if (boss.bossType === 'blitz-predator') {
+        // Sleek, aerodynamic chassis
+        ctx.fillStyle = '#1c1917';
+        ctx.beginPath();
+        ctx.moveTo(30, 0);
+        ctx.lineTo(-20, 25);
+        ctx.lineTo(-30, 0);
+        ctx.lineTo(-20, -25);
+        ctx.closePath();
+        ctx.fill();
         
-        ctx.fillStyle = isCritical 
-            ? `rgba(255, 255, 255, ${0.8 + Math.random() * 0.2})` 
-            : `rgba(239, 68, 68, ${0.4 + pulse * 0.6})`;
-            
-        ctx.shadowColor = isCritical ? '#fff' : '#ef4444';
-        ctx.shadowBlur = isCritical ? 20 + Math.random() * 10 : 0;
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
         
-        ctx.fillRect(-20, -20, 10, 40);
-        ctx.fillRect(10, -20, 10, 40);
+        // Engine glow
+        ctx.fillStyle = '#ff0055';
+        ctx.shadowColor = '#ff0055';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(-25, 0, 8, 0, Math.PI*2);
+        ctx.fill();
         ctx.shadowBlur = 0;
+    } else if (boss.bossType === 'thunder-colossus') {
+        // Massive, blocky chassis with electrical nodes
+        ctx.fillStyle = '#1c1917';
+        ctx.fillRect(-35, -40, 70, 80);
+        
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(-35, -40, 70, 80);
+        
+        // Nodes
+        ctx.fillStyle = '#eab308';
+        ctx.shadowColor = '#eab308';
+        ctx.shadowBlur = 10;
+        [[-35, -40], [35, -40], [-35, 40], [35, 40]].forEach(([nx, ny]) => {
+            ctx.beginPath();
+            ctx.arc(nx, ny, 8, 0, Math.PI*2);
+            ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+    } else if (boss.bossType === 'mirror-knight') {
+        // Diamond-shaped reflective chassis
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.moveTo(40, 0);
+        ctx.lineTo(0, 35);
+        ctx.lineTo(-40, 0);
+        ctx.lineTo(0, -35);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Inner reflective core
+        ctx.fillStyle = '#e2e8f0';
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(25, 0);
+        ctx.lineTo(0, 20);
+        ctx.lineTo(-25, 0);
+        ctx.lineTo(0, -20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    } else if (boss.bossType === 'toxic-swarm') {
+        // Organic, bulbous shape
+        ctx.fillStyle = '#064e3b';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 35, 25, 0, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Toxic pustules
+        ctx.fillStyle = '#10b981';
+        ctx.shadowColor = '#10b981';
+        ctx.shadowBlur = 10;
+        [[-15, -10], [10, -15], [5, 10], [-20, 5]].forEach(([px, py]) => {
+            ctx.beginPath();
+            ctx.arc(px, py, 4 + Math.random() * 2, 0, Math.PI*2);
+            ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+    } else {
+        // Default Goliath
+        ctx.fillStyle = '#1c1917';
+        ctx.fillRect(-45, -50, 30, 100); 
+        
+        ctx.fillStyle = '#450a0a'; 
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const s = 40;
+        ctx.moveTo(s, 0);
+        ctx.lineTo(s*0.7, s*0.7);
+        ctx.lineTo(0, s);
+        ctx.lineTo(-s*0.7, s*0.7);
+        ctx.lineTo(-s, 0);
+        ctx.lineTo(-s*0.7, -s*0.7);
+        ctx.lineTo(0, -s);
+        ctx.lineTo(s*0.7, -s*0.7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        if (!isHit) {
+            const isCritical = boss.attackState.currentAttack === 'lastStand';
+            const pulse = Math.abs(Math.sin(now * (isCritical ? 0.02 : 0.005)));
+            
+            ctx.fillStyle = isCritical 
+                ? `rgba(255, 255, 255, ${0.8 + Math.random() * 0.2})` 
+                : `rgba(239, 68, 68, ${0.4 + pulse * 0.6})`;
+                
+            ctx.shadowColor = isCritical ? '#fff' : '#ef4444';
+            ctx.shadowBlur = isCritical ? 20 + Math.random() * 10 : 0;
+            
+            ctx.fillRect(-20, -20, 10, 40);
+            ctx.fillRect(10, -20, 10, 40);
+            ctx.shadowBlur = 0;
+        }
     }
     
     // --- REDESIGNED BOSS SHOCKWAVE TELEGRAPH ---
@@ -437,58 +530,137 @@ export function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, now: number,
             ctx.restore();
         }
     }
-    // --- OMNI BARRAGE TELEGRAPH REMOVED ---
-
 
     ctx.shadowBlur = isHit ? 20 : 0; 
     ctx.rotate(degToRad(boss.turretAngle - boss.angle));
     
-    ctx.fillStyle = '#1f2937';
-    ctx.strokeStyle = baseColor;
-    ctx.lineWidth = 2;
-    
-    ctx.fillRect(10, -18, 55, 12);
-    ctx.fillRect(10, 6, 55, 12);
-    
-    ctx.fillStyle = '#7f1d1d';
-    ctx.beginPath();
-    ctx.arc(0, 0, 22, 0, Math.PI*2);
-    ctx.fill();
-    ctx.stroke();
+    // Turret Rendering
+    if (boss.bossType === 'blitz-predator') {
+        ctx.fillStyle = '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        // Twin sleek barrels
+        ctx.fillRect(10, -10, 35, 6);
+        ctx.fillRect(10, 4, 35, 6);
+        
+        ctx.fillStyle = '#4c1d95';
+        ctx.beginPath();
+        ctx.arc(0, 0, 12, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+    } else if (boss.bossType === 'thunder-colossus') {
+        ctx.fillStyle = '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        // Massive central cannon
+        ctx.fillRect(15, -15, 45, 30);
+        
+        ctx.fillStyle = '#713f12';
+        ctx.beginPath();
+        ctx.rect(-15, -20, 30, 40);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Energy core
+        ctx.fillStyle = '#eab308';
+        ctx.shadowColor = '#eab308';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    } else if (boss.bossType === 'mirror-knight') {
+        ctx.fillStyle = '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        // Shield projector
+        ctx.beginPath();
+        ctx.moveTo(20, -15);
+        ctx.lineTo(35, 0);
+        ctx.lineTo(20, 15);
+        ctx.lineTo(0, 15);
+        ctx.lineTo(0, -15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(0, 0, 14, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+    } else if (boss.bossType === 'toxic-swarm') {
+        ctx.fillStyle = '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        // Spray nozzle
+        ctx.beginPath();
+        ctx.moveTo(10, -8);
+        ctx.lineTo(30, -12);
+        ctx.lineTo(30, 12);
+        ctx.lineTo(10, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#064e3b';
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+    } else {
+        // Default Goliath Turret
+        ctx.fillStyle = '#1f2937';
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        
+        ctx.fillRect(10, -18, 55, 12);
+        ctx.fillRect(10, 6, 55, 12);
+        
+        ctx.fillStyle = '#7f1d1d';
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
 
-    const isPoison = boss.attackState.currentAttack === 'poisonGas';
-    ctx.fillStyle = isPoison ? '#10b981' : '#fca5a5';
-    ctx.beginPath(); ctx.arc(0, 0, isPoison ? 10 : 8, 0, Math.PI*2); ctx.fill();
-    
-    if (isPoison) {
-        ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 10 + Math.random() * 10;
-    }
+        const isPoison = boss.attackState.currentAttack === 'poisonGas';
+        ctx.fillStyle = isPoison ? '#10b981' : '#fca5a5';
+        ctx.beginPath(); ctx.arc(0, 0, isPoison ? 10 : 8, 0, Math.PI*2); ctx.fill();
+        
+        if (isPoison) {
+            ctx.shadowColor = '#10b981';
+            ctx.shadowBlur = 10 + Math.random() * 10;
+        }
 
-    if (boss.attackState.phase === 'telegraphing') {
-       const isLaser = boss.attackState.currentAttack === 'laserSweep';
-       
-       ctx.shadowColor = (isLaser) ? '#ff0000' : '#ef4444';
-       ctx.shadowBlur = 20 + Math.random() * 10;
-       ctx.fillStyle = '#fff';
-       
-       if (isLaser) {
-           ctx.beginPath(); ctx.arc(65, 0, 6, 0, Math.PI*2); ctx.fill();
-           ctx.save();
-           ctx.setLineDash([5, 5]);
-           ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
-           ctx.lineWidth = 2;
-           ctx.beginPath();
-           ctx.moveTo(65, 0);
-           ctx.lineTo(800, -200); 
-           ctx.moveTo(65, 0);
-           ctx.lineTo(800, 200);
-           ctx.stroke();
-           ctx.restore();
-       } else if (boss.attackState.currentAttack === 'mortarVolley') {
-           ctx.beginPath(); ctx.arc(65, -12, 5, 0, Math.PI*2); ctx.fill();
-           ctx.beginPath(); ctx.arc(65, 12, 5, 0, Math.PI*2); ctx.fill();
-       }
+        if (boss.attackState.phase === 'telegraphing') {
+           const isLaser = boss.attackState.currentAttack === 'laserSweep';
+           
+           ctx.shadowColor = (isLaser) ? '#ff0000' : '#ef4444';
+           ctx.shadowBlur = 20 + Math.random() * 10;
+           ctx.fillStyle = '#fff';
+           
+           if (isLaser) {
+               ctx.beginPath(); ctx.arc(65, 0, 6, 0, Math.PI*2); ctx.fill();
+               ctx.save();
+               ctx.setLineDash([5, 5]);
+               ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+               ctx.lineWidth = 2;
+               ctx.beginPath();
+               ctx.moveTo(65, 0);
+               ctx.lineTo(800, -200); 
+               ctx.moveTo(65, 0);
+               ctx.lineTo(800, 200);
+               ctx.stroke();
+               ctx.restore();
+           } else if (boss.attackState.currentAttack === 'mortarVolley') {
+               ctx.beginPath(); ctx.arc(65, -12, 5, 0, Math.PI*2); ctx.fill();
+               ctx.beginPath(); ctx.arc(65, 12, 5, 0, Math.PI*2); ctx.fill();
+           }
+        }
     }
     
     ctx.restore(); // End boss transform
@@ -1753,6 +1925,19 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
     const glowColor = proj.color || (isPlayer ? '#00F0FF' : '#ef4444');
     const style = getStyle(ctx, glowColor, proj.secondaryColor, proj.colorStyle, 10);
     
+    if (proj.isSmokeBomb) {
+        const img = powerUpImages['smokeBomb'];
+        if (img && img.complete) {
+            ctx.rotate(Date.now() * 0.005); // Spin
+            ctx.drawImage(img, -16, -16, 32, 32);
+        } else {
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+        return;
+    }
+
     if (proj.isHoming) {
         ctx.scale(1.2, 1.2);
         if (proj.isVampiric) {
@@ -1775,6 +1960,102 @@ export function drawProjectile(ctx: CanvasRenderingContext2D, proj: Projectile, 
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = coreColor; ctx.beginPath(); ctx.ellipse(0, 0, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = style; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+}
+
+export function drawCombatText(ctx: CanvasRenderingContext2D, texts: CombatText[], now: number) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Filter active texts and sort by creation time (newest last)
+    const activeTexts = texts.filter(ct => now < ct.createdAt + ct.duration);
+    
+    // We want to stack them at the top center
+    // Max 3 visible
+    const visibleTexts = activeTexts.slice(-3);
+    
+    visibleTexts.forEach((ct, index) => {
+        const elapsed = now - ct.createdAt;
+        
+        ctx.save();
+        
+        // Position Logic (Top Center Stacking)
+        // Base position: Top Center (50% width, 15% height)
+        // Stack downwards: index 0 is top, index 1 is below, etc.
+        // Actually, newest should be at the bottom of the stack or top? 
+        // Spec: "Vertical stack, newest on top, stacked downward."
+        // So newest is index (length-1).
+        // Let's render them based on their reverse index.
+        
+        const reverseIndex = visibleTexts.length - 1 - index;
+        const baseY = ctx.canvas.height * 0.15; // 15% from top
+        const spacing = 40; // 40px spacing
+        
+        let x = ctx.canvas.width / 2;
+        let y = baseY + (reverseIndex * spacing);
+        
+        // Shake effect on completion
+        const BLIP_SPEED = 50;
+        const totalBlipTime = ct.text.length * BLIP_SPEED;
+        const isComplete = elapsed > totalBlipTime;
+        
+        if (isComplete) {
+            const shakeIntensity = (ct.comboTier || 1) * 1.5;
+            x += (Math.random() - 0.5) * shakeIntensity;
+            y += (Math.random() - 0.5) * shakeIntensity;
+        }
+        
+        ctx.translate(x, y);
+        
+        // Font settings
+        // Scale based on vertical resolution: 2.2%
+        const baseFontSize = ctx.canvas.height * 0.022;
+        const tierScale = 1 + (ct.comboTier || 0) * 0.1;
+        const fontSize = baseFontSize * tierScale;
+        
+        ctx.font = `900 ${fontSize}px "Orbitron", sans-serif`;
+        
+        // Draw letters
+        const visibleChars = Math.min(ct.text.length, Math.floor(elapsed / BLIP_SPEED) + 1);
+        const textWidth = ctx.measureText(ct.text).width;
+        let currentX = -textWidth / 2;
+        
+        for (let i = 0; i < visibleChars; i++) {
+            const char = ct.text[i];
+            const charWidth = ctx.measureText(char).width;
+            const charAge = elapsed - (i * BLIP_SPEED);
+            
+            ctx.save();
+            ctx.translate(currentX + charWidth/2, 0);
+            
+            // Pop animation for new letters
+            let scale = 1;
+            if (charAge < 100) {
+                scale = 1.5 - (charAge / 100) * 0.5;
+            }
+            ctx.scale(scale, scale);
+            
+            // Color & Glow
+            ctx.fillStyle = ct.color;
+            ctx.shadowColor = ct.color;
+            ctx.shadowBlur = isComplete ? 20 : 10;
+            
+            ctx.fillText(char, 0, 0);
+            ctx.strokeText(char, 0, 0);
+            
+            // White flash on pop
+            if (charAge < 50) {
+                ctx.fillStyle = '#fff';
+                ctx.fillText(char, 0, 0);
+            }
+            
+            ctx.restore();
+            currentX += charWidth;
+        }
+        
+        ctx.restore();
+    });
     ctx.restore();
 }
 
@@ -1822,8 +2103,173 @@ export function drawTelegraphs(ctx: CanvasRenderingContext2D, telegraphs: Telegr
     });
 }
 
+export function drawMeleeSwing(ctx: CanvasRenderingContext2D, anim: Animation, now: number) {
+    if (!anim.phase || !anim.phaseStartTime) return;
+    
+    const elapsed = now - anim.phaseStartTime;
+    const color = anim.color || '#a855f7';
+    const isVenom = color === '#10b981';
+    
+    // Animation Parameters
+    const range = anim.width || 150;
+    const arc = (anim.swingArc || 120) * (Math.PI / 180);
+    const baseAngle = anim.angle || 0;
+    
+    ctx.save();
+    ctx.translate(anim.position.x, anim.position.y);
+    ctx.rotate(baseAngle);
+    
+    if (anim.phase === 'anticipation') {
+        // Wind-up: Rotate slightly opposite to swing direction
+        // Duration 100ms
+        const progress = Math.min(1, elapsed / 100);
+        // Ease out cubic
+        const ease = 1 - Math.pow(1 - progress, 3);
+        
+        const windUpAngle = -0.2 * ease; // ~11 degrees back
+        
+        ctx.rotate(windUpAngle);
+        
+        // Draw weapon hint or glow
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.5 * ease;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(range * 0.3, 0);
+        ctx.stroke();
+        
+    } else if (anim.phase === 'strike') {
+        // Strike: Fast forward sweep
+        // Duration 150ms
+        const duration = 150;
+        const progress = Math.min(1, elapsed / duration);
+        // Ease in cubic (fast acceleration)
+        const ease = progress * progress * progress;
+        
+        const totalSweep = arc;
+        const startSweep = -arc/2;
+        const currentSweep = startSweep + (totalSweep * ease);
+        
+        // Draw "Blade"
+        ctx.save();
+        ctx.rotate(currentSweep);
+        
+        // Glow Flash at peak (middle of swing)
+        if (progress > 0.4 && progress < 0.6) {
+             ctx.shadowColor = '#fff';
+             ctx.shadowBlur = 20;
+             ctx.fillStyle = '#fff';
+             ctx.globalAlpha = 0.8;
+        }
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0,0);
+        ctx.lineTo(range, 0);
+        ctx.stroke();
+        ctx.restore();
+        
+        // Draw Trail (Arc)
+        // Trail should be behind the current sweep angle.
+        const trailLen = 0.5 * ease; // Trail gets longer as it speeds up
+        const trailStart = currentSweep - (totalSweep * trailLen);
+        
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, range, trailStart, currentSweep);
+        ctx.closePath();
+        
+        // Gradient for trail
+        const grad = ctx.createRadialGradient(0, 0, range * 0.2, 0, 0, range);
+        grad.addColorStop(0, 'transparent');
+        grad.addColorStop(0.5, color); // Main color
+        grad.addColorStop(1, isVenom ? '#34d399' : '#c084fc'); // Lighter tip
+        
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.6 * (1 - progress * 0.2); // Fade slightly
+        ctx.fill();
+        
+        // Edge Glow
+        ctx.beginPath();
+        ctx.arc(0, 0, range, trailStart, currentSweep);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.8;
+        ctx.stroke();
+        
+        // Toxic Mist for Venom (Fading Mist)
+        if (isVenom) {
+             const mistCount = 8;
+             ctx.fillStyle = '#10b981';
+             for(let i=0; i<mistCount; i++) {
+                 const r = range * (0.4 + Math.random() * 0.6);
+                 const a = trailStart + Math.random() * (currentSweep - trailStart);
+                 const s = Math.random() * 4 * (1 - progress); // Shrink over time
+                 ctx.globalAlpha = 0.4 * (1 - progress);
+                 ctx.beginPath();
+                 ctx.arc(Math.cos(a)*r, Math.sin(a)*r, s, 0, Math.PI*2);
+                 ctx.fill();
+             }
+             
+             // Glow Pulse at peak
+             if (progress > 0.4 && progress < 0.6) {
+                 ctx.globalAlpha = 0.3;
+                 ctx.fillStyle = '#34d399';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, range * 1.2, startSweep, currentSweep);
+                 ctx.lineTo(0,0);
+                 ctx.fill();
+             }
+        }
+
+    } else if (anim.phase === 'recovery') {
+        // Follow-through: Overshoot and settle
+        // Duration 100ms
+        const duration = 100;
+        const progress = Math.min(1, elapsed / duration);
+        // Ease out
+        const ease = 1 - Math.pow(1 - progress, 2);
+        
+        const endAngle = arc / 2;
+        const overshoot = 0.1;
+        
+        ctx.rotate(endAngle + overshoot * Math.sin(progress * Math.PI));
+        
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 1 - progress; // Fade out
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(range, 0);
+        ctx.stroke();
+        
+        // Lingering particles for Venom
+        if (isVenom) {
+             ctx.fillStyle = '#10b981';
+             ctx.globalAlpha = (1 - progress) * 0.8;
+             for(let i=0; i<10; i++) {
+                 const r = range * (0.5 + Math.random() * 0.5);
+                 const a = (Math.random() - 0.5) * arc; // Random scatter in arc
+                 const s = Math.random() * 4;
+                 ctx.beginPath();
+                 ctx.arc(Math.cos(a)*r + (progress*10), Math.sin(a)*r, s, 0, Math.PI*2);
+                 ctx.fill();
+             }
+        }
+    }
+    
+    ctx.restore();
+}
+
 export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animation[], now: number) {
     animations.forEach(anim => {
+        if (anim.type === 'meleeSwing') {
+            drawMeleeSwing(ctx, anim, now);
+            return;
+        }
+
         const elapsed = now - anim.createdAt; if (elapsed > anim.duration) return; const progress = elapsed / anim.duration;
         ctx.save(); ctx.translate(anim.position.x, anim.position.y);
         
@@ -1910,39 +2356,53 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
              // REDESIGNED SHOCKWAVE ANIMATION
              const maxRadius = anim.width || 200;
              const p = progress;
+             const isDirectional = anim.angle !== undefined;
+             const startAngle = isDirectional ? degToRad(anim.angle - 45) : 0;
+             const endAngle = isDirectional ? degToRad(anim.angle + 45) : Math.PI * 2;
              
              // 1. Initial Flash
              if (p < 0.2) {
                  ctx.fillStyle = `rgba(255, 255, 255, ${1 - (p * 5)})`;
                  ctx.beginPath();
-                 ctx.arc(0, 0, Math.max(0, maxRadius * 0.5 * p), 0, Math.PI*2);
+                 if (isDirectional) {
+                     ctx.moveTo(0, 0);
+                     ctx.arc(0, 0, Math.max(0, maxRadius * 0.5 * p), startAngle, endAngle);
+                     ctx.closePath();
+                 } else {
+                     ctx.arc(0, 0, Math.max(0, maxRadius * 0.5 * p), 0, Math.PI*2);
+                 }
                  ctx.fill();
              }
 
              // 2. Main Blast Wave (Thick, bright red)
-             ctx.strokeStyle = `rgba(255, 50, 50, ${1 - p})`;
+             ctx.strokeStyle = anim.color || `rgba(255, 50, 50, ${1 - p})`;
              ctx.lineWidth = 20 * (1 - p);
              ctx.shadowBlur = 20;
-             ctx.shadowColor = '#f00';
+             ctx.shadowColor = anim.color || '#f00';
              ctx.beginPath();
-             ctx.arc(0, 0, Math.max(0, maxRadius * p), 0, Math.PI * 2);
+             ctx.arc(0, 0, Math.max(0, maxRadius * p), startAngle, endAngle);
+             if (isDirectional) {
+                 // No closePath for the ring itself, but maybe add lines to center for "cone" feel
+             }
              ctx.stroke();
              
              // 3. Inner Echo Rings
              ctx.lineWidth = 2;
              ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - p) * 0.5})`;
              ctx.beginPath();
-             ctx.arc(0, 0, Math.max(0, maxRadius * p * 0.7), 0, Math.PI * 2);
+             ctx.arc(0, 0, Math.max(0, maxRadius * p * 0.7), startAngle, endAngle);
              ctx.stroke();
 
              // 4. Debris/Sparks
              const numSparks = 12;
              for(let i=0; i<numSparks; i++) {
-                 const angle = (i / numSparks) * Math.PI * 2 + (p * 2);
+                 const sparkAngle = isDirectional 
+                    ? degToRad(anim.angle - 45 + Math.random() * 90)
+                    : (i / numSparks) * Math.PI * 2 + (p * 2);
                  const dist = maxRadius * p * (0.8 + Math.random() * 0.4);
                  ctx.fillStyle = anim.color === '#0ea5e9' ? '#fff' : '#ffff00';
                  ctx.beginPath();
-                 ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, Math.max(0, 3 * (1-p)), 0, Math.PI*2);
+                 ctx.arc(Math.cos(sparkAngle)*dist, Math.sin(sparkAngle)*dist, Math.max(0, 3 * (1-p)), 0, Math.PI*2);
                  ctx.fill();
                  
                  // Add electrical arcs for EM Overload
@@ -1950,8 +2410,8 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                      ctx.strokeStyle = '#fff';
                      ctx.lineWidth = 1;
                      ctx.beginPath();
-                     ctx.moveTo(Math.cos(angle)*dist, Math.sin(angle)*dist);
-                     ctx.lineTo(Math.cos(angle)*dist + (Math.random()-0.5)*40, Math.sin(angle)*dist + (Math.random()-0.5)*40);
+                     ctx.moveTo(Math.cos(sparkAngle)*dist, Math.sin(sparkAngle)*dist);
+                     ctx.lineTo(Math.cos(sparkAngle)*dist + (Math.random()-0.5)*40, Math.sin(sparkAngle)*dist + (Math.random()-0.5)*40);
                      ctx.stroke();
                  }
              }
@@ -2162,6 +2622,17 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
             ctx.globalAlpha = (1 - p) * 0.8;
             ctx.fillStyle = anim.color || '#64748b';
             
+            // Draw the bomb icon at the center for the first 10% of duration
+            if (p < 0.1) {
+                const img = powerUpImages['smokeBomb'];
+                if (img && img.complete) {
+                    ctx.save();
+                    ctx.globalAlpha = (0.1 - p) * 10;
+                    ctx.drawImage(img, -20, -20, 40, 40);
+                    ctx.restore();
+                }
+            }
+
             for (let i = 0; i < 5; i++) {
                 const angle = (i / 5) * Math.PI * 2 + p;
                 const dist = p * size * 0.5;
@@ -2195,6 +2666,33 @@ export function drawAnimations(ctx: CanvasRenderingContext2D, animations: Animat
                 ctx.arc(px, py, 3 * (1-p), 0, Math.PI*2);
                 ctx.fill();
             }
+        } else if (anim.type === 'slash') {
+            const p = progress;
+            const size = anim.width || 100;
+            const color = anim.color || '#fff';
+            
+            ctx.rotate(anim.angle || 0);
+            
+            // Wide arc slash
+            ctx.beginPath();
+            ctx.arc(0, 0, size, -Math.PI/3, Math.PI/3);
+            ctx.lineWidth = 10 * (1 - p);
+            ctx.strokeStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 15;
+            ctx.stroke();
+            
+            // Inner fill for impact
+            ctx.globalAlpha = (1 - p) * 0.5;
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Smear effect
+            ctx.globalAlpha = (1 - p) * 0.3;
+            ctx.beginPath();
+            ctx.arc(0, 0, size * 1.2, -Math.PI/3, Math.PI/3);
+            ctx.lineWidth = 2;
+            ctx.stroke();
         }
         ctx.restore();
     });

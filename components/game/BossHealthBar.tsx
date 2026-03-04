@@ -58,49 +58,71 @@ const BossHealthBar: React.FC<BossHealthBarProps> = ({ boss }) => {
   if (!boss || boss.status === 'dead') return null;
 
   return (
-    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-2/3 z-30 font-orbitron animate-fade-in-up pointer-events-none select-none">
-      <div className="text-center mb-2">
-        <p ref={nameRef} className="text-2xl font-bold uppercase text-red-400 text-glow-red tracking-widest">
-            {boss.name}
-        </p>
-        <p ref={statusRef} className="text-xs text-red-500/70 tracking-widest uppercase h-4 transition-colors duration-300">
-            THREAT LEVEL: EXTREME
-        </p>
+    <div className="absolute top-6 left-1/2 -translate-x-1/2 w-1/2 min-w-[500px] max-w-[800px] z-30 font-orbitron animate-fade-in-down pointer-events-none select-none">
+      <div className="flex justify-between items-end mb-1 px-4">
+        <div className="flex flex-col">
+            <div className="flex items-center gap-2 mb-0.5">
+                <div className="w-1.5 h-1.5 bg-red-500 animate-pulse shadow-[0_0_5px_red]" />
+                <p ref={statusRef} className="text-[9px] text-red-500/70 tracking-[0.2em] uppercase transition-colors duration-300">
+                    THREAT LEVEL: EXTREME
+                </p>
+            </div>
+            <p ref={nameRef} className="text-xl font-bold uppercase text-red-400 text-glow-red tracking-widest leading-none">
+                {boss.name}
+            </p>
+        </div>
+        <div className="flex flex-col items-end">
+            <span className="text-[8px] font-mono text-red-500/50 uppercase tracking-widest">CLASS: {boss.bossType.toUpperCase()}</span>
+            <span className="text-[8px] font-mono text-red-500/50 uppercase tracking-widest">TARGET_LOCKED</span>
+        </div>
       </div>
       
-      <div className="w-full bg-black/70 border-2 border-red-500/50 p-1.5 backdrop-blur-sm relative" style={{clipPath: 'polygon(0 0, 100% 0, 100% 100%, 98% 100%, 98% 60%, 2% 60%, 2% 100%, 0 100%)'}}>
+      <div className="w-full bg-black/60 border border-red-500/30 p-1.5 backdrop-blur-md relative rounded-sm shadow-[0_0_20px_rgba(239,68,68,0.15)]">
+        {/* Corner Accents */}
+        <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-red-500" />
+        <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-red-500" />
+        <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-red-500" />
+        <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-red-500" />
+
         {/* Background container */}
-        <div className="h-4 w-full bg-red-900/20 relative overflow-hidden">
+        <div className="h-3 w-full bg-stone-900/80 relative overflow-hidden rounded-sm">
+            {/* Segmented background markers */}
+            <div className="absolute inset-0 flex justify-between px-1 pointer-events-none opacity-20 z-10">
+                {[...Array(30)].map((_, i) => <div key={i} className="w-px h-full bg-white/20" />)}
+            </div>
+
             {/* Health Bar - Width controlled by Ref/JS */}
             <div 
                 ref={barRef}
-                className="h-full bg-gradient-to-r from-red-500 to-red-700 relative will-change-[width]"
-                style={{ width: '0%', boxShadow: '0 0 15px #ef4444' }}
+                className="h-full bg-red-500 relative will-change-[width] shadow-[0_0_15px_#ef4444]"
+                style={{ width: '0%' }}
             >
-                <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:20px_20px] animate-stripe-flow"></div>
+                <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.15)_50%,transparent_75%)] bg-[length:15px_15px] animate-stripe-flow"></div>
             </div>
         </div>
         
         {/* Shield Overlay for Sentinel */}
         {boss.bossType === 'sentinel' && boss.shieldSegments && (
-            <div className="absolute top-0 left-0 w-full h-full flex gap-1 pointer-events-none">
+            <div className="absolute top-1.5 left-1.5 right-1.5 h-3 flex gap-0.5 pointer-events-none z-20">
                 {boss.shieldSegments.map((s, i) => (
-                    s.active && <div key={i} className="h-1 bg-cyan-400 w-full shadow-[0_0_5px_#06b6d4]"></div>
+                    s.active ? 
+                        <div key={i} className="flex-1 h-full bg-cyan-400/80 border-r border-cyan-300 shadow-[0_0_8px_#06b6d4]"></div> :
+                        <div key={i} className="flex-1 h-full bg-transparent"></div>
                 ))}
             </div>
         )}
       </div>
        <style>{`
-        @keyframes fade-in-up {
-          from { opacity: 0; transform: translate(-50%, 20px); }
+        @keyframes fade-in-down {
+          from { opacity: 0; transform: translate(-50%, -20px); }
           to { opacity: 1; transform: translate(-50%, 0); }
         }
-        .animate-fade-in-up {
-          animation: fade-in-up 0.5s ease-out forwards;
+        .animate-fade-in-down {
+          animation: fade-in-down 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
         @keyframes stripe-flow {
             0% { background-position: 0 0; }
-            100% { background-position: 40px 0; }
+            100% { background-position: 30px 0; }
         }
         .animate-stripe-flow {
             animation: stripe-flow 1s linear infinite;

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Screen, Ability, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType, CutsceneState, KillFeedMessage, CombatText, Barrel, ChassisType, StatusEffect, PoisonStatusEffect, ConductiveStatusEffect, StatusMessage } from '../../types';
+import type { Screen, Ability, AbilityId, Tank as TankType, Projectile, Vector, Animation, PowerUp, Boss, Telegraph, EffectZone, GameConfig, UIState, Minion, DamageNumber, PowerUpType, CutsceneState, KillFeedMessage, CombatText, Barrel, ChassisType, StatusEffect, PoisonStatusEffect, ConductiveStatusEffect, StatusMessage } from '../../types';
 import { Difficulty } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAudio } from '../../contexts/AudioContext';
@@ -8,7 +8,7 @@ import { useAudio } from '../../contexts/AudioContext';
 import HUD from './HUD';
 import StatusFeed from './StatusFeed';
 import AbilityHotbar from './AbilityHotbar';
-import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCyberBeam, drawLastStandWarning, drawLaserSweep, loadGameAssets, drawCutsceneOverlay, drawBarrel } from './canvasRenderer';
+import { drawTank, drawProjectile, drawGrid, drawAnimations, drawPowerUp, drawBoss, drawTelegraphs, drawEffectZones, drawDamageNumbers, drawCombatText, drawCyberBeam, drawLastStandWarning, drawLaserSweep, loadGameAssets, drawCutsceneOverlay, drawBarrel } from './canvasRenderer';
 import Leaderboard from './Leaderboard';
 import { generateUsername } from './usernameGenerator';
 import BossHealthBar from './BossHealthBar';
@@ -20,16 +20,83 @@ import TutorialOverlay from './TutorialOverlay';
 // --- CONSTANTS ---
 const ARENA_WIDTH = 1000;
 const ARENA_HEIGHT = 700;
+
+const ALL_ABILITIES: Ability[] = [
+    { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 },
+    { id: 'cyberBeam', name: 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 5000, cooldown: 12000, startTime: 0, chargeDuration: 1000 },
+    { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 },
+    { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 },
+    { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
+    { id: 'poisonGas', name: 'Poison Gas', keyBinding: 'E', state: 'ready', duration: 5000, cooldown: 12000, startTime: 0 },
+    { id: 'shockwave', name: 'Shockwave', keyBinding: 'E', state: 'ready', duration: 600, cooldown: 12000, startTime: 0 },
+    { id: 'mortarVolley', name: 'Mortar Volley', keyBinding: 'R', state: 'ready', duration: 2000, cooldown: 20000, startTime: 0 },
+    { id: 'laserSweep', name: 'Laser Sweep', keyBinding: 'E', state: 'ready', duration: 4000, cooldown: 15000, startTime: 0 },
+    { id: 'scatterMines', name: 'Scatter Mines', keyBinding: 'F', state: 'ready', duration: 500, cooldown: 10000, startTime: 0 },
+    { id: 'nanoSwarm', name: 'Nano Swarm', keyBinding: 'R', state: 'ready', duration: 5000, cooldown: 22000, startTime: 0 },
+    { id: 'phaseShift', name: 'Phase Shift', keyBinding: 'E', state: 'ready', duration: 2000, cooldown: 15000, startTime: 0 },
+    { id: 'flamethrower', name: 'Flamethrower', keyBinding: 'Q', state: 'ready', duration: 3000, cooldown: 10000, startTime: 0 },
+    { id: 'chainLightning', name: 'Chain Lightning', keyBinding: 'F', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
+    { id: 'prismGuard', name: 'Prism Guard', keyBinding: 'Q', state: 'ready', duration: 5000, cooldown: 20000, startTime: 0 },
+    { id: 'lightningDash', name: 'Lightning Dash', keyBinding: 'Q', state: 'ready', duration: 300, cooldown: 8000, startTime: 0 },
+    { id: 'emOverload', name: 'EM Overload', keyBinding: 'E', state: 'ready', duration: 1000, cooldown: 18000, startTime: 0 },
+    { id: 'staticVeil', name: 'Static Veil', keyBinding: 'R', state: 'ready', duration: 4000, cooldown: 15000, startTime: 0 },
+    { id: 'voltLock', name: 'Volt Lock', keyBinding: 'F', state: 'ready', duration: 5000, cooldown: 20000, startTime: 0 },
+    { id: 'overdriveCore', name: 'Overdrive Core', keyBinding: 'Q', state: 'ready', duration: 10000, cooldown: 30000, startTime: 0 },
+    { id: 'conductiveField', name: 'Conductive Field', keyBinding: 'E', state: 'ready', duration: 6000, cooldown: 20000, startTime: 0 },
+    { id: 'counterSurge', name: 'Counter Surge', keyBinding: 'Space', state: 'ready', duration: 500, cooldown: 5000, startTime: 0 },
+    { id: 'shadowStrike', name: 'Shadow Strike', keyBinding: 'Q', state: 'ready', duration: 350, cooldown: 8000, startTime: 0 },
+    { id: 'smokeBomb', name: 'Smoke Bomb', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 12000, startTime: 0 },
+    { id: 'venomBlade', name: 'Venom Blade', keyBinding: 'F', state: 'ready', duration: 350, cooldown: 8000, startTime: 0 },
+    { id: 'rapidBlast', name: 'Rapid Blast', keyBinding: 'R', state: 'ready', duration: 300, cooldown: 6000, startTime: 0 },
+    { id: 'shieldSlam', name: 'Shield Slam', keyBinding: 'E', state: 'ready', duration: 500, cooldown: 10000, startTime: 0 },
+    { id: 'toxicSpray', name: 'Toxic Spray', keyBinding: 'Y', state: 'ready', duration: 4000, cooldown: 12000, startTime: 0 },
+    { id: 'empPulse', name: 'EMP Pulse', keyBinding: 'F', state: 'ready', duration: 500, cooldown: 15000, startTime: 0 },
+];
+
+const getChassisStats = (chassis: ChassisType) => {
+    switch (chassis) {
+        case 'rogue-scout':
+            return { health: 80, abilities: ['overdrive', 'phaseShift', 'rapidBlast'] as AbilityId[] };
+        case 'iron-bastion':
+            return { health: 200, abilities: ['prismGuard', 'shieldSlam', 'mortarVolley'] as AbilityId[] };
+        case 'phantom-weaver':
+            return { health: 90, abilities: ['shadowStrike', 'smokeBomb', 'nanoSwarm'] as AbilityId[] };
+        case 'titan-ogre':
+            return { health: 250, abilities: ['overdrive', 'shieldSlam', 'mortarVolley'] as AbilityId[] };
+        case 'volt-strider':
+            return { health: 100, abilities: ['lightningDash', 'empPulse', 'teslaStorm'] as AbilityId[] };
+        case 'inferno-cobra':
+            return { health: 120, abilities: ['flamethrower', 'mortarVolley', 'rapidBlast'] as AbilityId[] };
+        case 'crystal-vanguard':
+            return { health: 150, abilities: ['prismGuard', 'empPulse', 'cyberBeam'] as AbilityId[] };
+        case 'goliath-prime':
+            return { health: 300, abilities: ['overdriveCore', 'toxicSpray', 'mortarVolley'] as AbilityId[] };
+        case 'vector-01':
+        default:
+            return { health: 100, abilities: ['overdrive', 'rapidBlast', 'shieldSlam', 'toxicSpray', 'empPulse'] as AbilityId[] };
+    }
+};
+
 // Base speeds defined for 60 FPS
 const PLAYER_SPEED = 3.5; 
 const PROJECTILE_SPEED = 7;
 const MISSILE_SPEED = 9;
 const SPAWN_DELAY = 1000; // ms to stay in spawning state
+const degToRad = (deg: number) => deg * Math.PI / 180;
 
 // Internal Game State (Mutable)
 
+interface ChainAttackState {
+    type: 'shadowStrike' | 'venomBlade';
+    count: number;
+    maxCount: number;
+    lastSlashTime: number;
+    interval: number;
+    baseDamage: number;
+}
+
 interface InternalGameState {
-    player: TankType;
+    player: TankType & { activeChainAttack?: ChainAttackState };
     enemies: TankType[];
     bosses: Boss[];
     boss: Boss | null; // For backward compatibility and single boss tracking
@@ -163,14 +230,19 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     const diffConfig = getDifficultyConfig(settings.difficulty);
 
     // Mutable Game State
+    const initialChassis = (config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis) || 'vector-01';
+    const initialStats = getChassisStats(initialChassis as ChassisType);
+
     const game = useRef<InternalGameState>({
         player: { 
             ...initialPlayer, 
+            health: initialStats.health,
+            maxHealth: initialStats.health,
             name: settings.playerName || 'VECTOR_01',
             color: settings.playerColor || '#00F0FF',
             secondaryColor: settings.playerSecondaryColor,
             colorStyle: settings.playerColorStyle,
-            chassis: config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis,
+            chassis: initialChassis as ChassisType,
             spawnTime: Date.now() 
         },
         enemies: [],
@@ -193,13 +265,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         wave: 1,
         waveState: 'active',
         enemiesToSpawn: 10,
-        abilities: [
-           { id: 'overdrive', name: 'Overdrive', keyBinding: 'Q', state: 'ready', duration: 8000, cooldown: 20000, startTime: 0 }, 
-           { id: (config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis) === 'goliath-prime' ? 'poisonGas' : 'cyberBeam', name: (config.mode === 'sandbox' ? config.sandboxConfig?.characterId : settings.equippedChassis) === 'goliath-prime' ? 'Poison Gas' : 'Cyber Beam', keyBinding: 'E', state: 'ready', duration: 5000, cooldown: 12000, startTime: 0, chargeDuration: 1000 }, 
-           { id: 'damageConverter', name: 'Flux Matrix', keyBinding: 'R', state: 'ready', duration: 6000, cooldown: 18000, startTime: 0 }, 
-           { id: 'missileBarrage', name: 'Missile Barrage', keyBinding: 'F', state: 'ready', duration: 1000, cooldown: 15000, startTime: 0, firedCount: 0 }, 
-           { id: 'teslaStorm', name: 'Tesla Storm', keyBinding: 'Y', state: 'ready', duration: 6000, cooldown: 25000, startTime: 0, firedCount: 0 },
-        ],
+        abilities: initialStats.abilities.map(id => {
+            const base = ALL_ABILITIES.find(a => a.id === id);
+            return { ...base!, state: 'ready', startTime: 0 };
+        }),
         activeAbilityId: null,
         lastPowerUpTime: Date.now(),
         lastRandomPowerUpTime: Date.now(),
@@ -234,10 +303,26 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     });
 
     const [uiState, setUiState] = useState<UIState>({
-        playerHealth: 10, playerMaxHealth: 10, playerShield: 0, playerScore: 0, playerKills: 0,
-        wave: 1, enemiesRemaining: 0, gameOver: false, duelWon: false, abilities: [], damageConverterCharge: 0,
-        showUpgradeScreen: false, availableUpgrades: [], statusMessages: [],
-        comboCount: 0, comboMultiplier: 1, comboTimeLeft: 0
+        playerHealth: initialStats.health, 
+        playerMaxHealth: initialStats.health, 
+        playerShield: 0, 
+        playerScore: 0, 
+        playerKills: 0,
+        wave: 1, 
+        enemiesRemaining: 0, 
+        gameOver: false, 
+        duelWon: false, 
+        abilities: initialStats.abilities.map(id => {
+            const base = ALL_ABILITIES.find(a => a.id === id);
+            return { ...base!, state: 'ready', startTime: 0 };
+        }), 
+        damageConverterCharge: 0,
+        showUpgradeScreen: false, 
+        availableUpgrades: [], 
+        statusMessages: [],
+        comboCount: 0, 
+        comboMultiplier: 1, 
+        comboTimeLeft: 0
     });
 
     const addStatusMessage = (text: string, type: 'buff' | 'debuff' | 'info' | 'kill', color?: string, duration = 3000) => {
@@ -265,6 +350,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
 
     const [displayHealth, setDisplayHealth] = useState(10);
     const [isSandboxPanelOpen, setIsSandboxPanelOpen] = useState(false);
+    const [sandboxSettings, setSandboxSettings] = useState(game.current.sandbox);
     const [showTutorial, setShowTutorial] = useState(!settings.tutorialCompleted);
 
     useEffect(() => {
@@ -494,20 +580,29 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             
             // Announcer text
             let comboText = '';
-            if (g.comboCount === 3) comboText = 'DOUBLE KILL!';
-            else if (g.comboCount === 6) comboText = 'RAMPAGE!';
-            else if (g.comboCount === 10) comboText = 'GODLIKE!';
+            let tier = 0;
+            let color = '#facc15'; // Yellow
+
+            if (g.comboCount === 2) { comboText = 'DOUBLE KILL'; tier = 1; color = '#facc15'; }
+            else if (g.comboCount === 3) { comboText = 'TRIPLE KILL'; tier = 1; color = '#facc15'; }
+            else if (g.comboCount === 4) { comboText = 'QUADRA KILL'; tier = 1; color = '#facc15'; }
+            else if (g.comboCount === 5) { comboText = 'RAMPAGE'; tier = 2; color = '#f97316'; } // Orange
+            else if (g.comboCount === 10) { comboText = 'GODLIKE'; tier = 3; color = '#ef4444'; } // Red
+            else if (g.comboCount === 15) { comboText = 'UNSTOPPABLE'; tier = 4; color = '#a855f7'; } // Purple
             
             if (comboText) {
-                g.combatTexts.push({
+                g.combatText.push({
                     id: `ct-${Date.now()}`,
                     text: comboText,
+                    position: { x: ARENA_WIDTH/2, y: ARENA_HEIGHT/4 }, // Top center
                     createdAt: now,
-                    duration: 1500,
-                    color: '#facc15', // Yellow
-                    isCritical: true
+                    duration: 2000 + tier * 500,
+                    color: color,
+                    type: 'blip',
+                    comboTier: tier,
+                    lastBlipIndex: -1,
+                    playedImpact: false
                 });
-                audio.play('uiClick'); // Placeholder for announcer
             }
         } else {
             g.comboCount = 1;
@@ -1125,21 +1220,49 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         // --- PROCESS EFFECT ZONES (Fissure, Fire & Poison & Conductive & Smoke) ---
         g.effectZones.forEach(zone => {
+             // Update position if attached to owner
+             if (zone.isAttachedToOwner && zone.ownerId) {
+                 const owner = [g.player, ...g.enemies, ...g.bosses].find(t => t && t.id === zone.ownerId);
+                 if (owner && owner.status === 'active') {
+                     zone.position = { ...owner.position };
+                 } else {
+                     // If owner is dead/gone, expire the zone early
+                     zone.duration = 0;
+                 }
+             }
+
              if (zone.type === 'smoke') {
-                 // Confuse AI tanks
+                 // Confuse AI tanks and reduce accuracy/speed
                  const targets = [...g.enemies, ...g.bosses].filter(tgt => tgt && tgt.status === 'active');
                  targets.forEach(tgt => {
-                     if (!tgt) return;
                      const d = Math.hypot(tgt.position.x - zone.position.x, tgt.position.y - zone.position.y);
                      if (d < zone.radius) {
+                         // Apply Smoke Debuff
                          if (!tgt.statusEffects) tgt.statusEffects = [];
-                         const existing = tgt.statusEffects.find(e => e.type === 'confused');
+                         
+                         // Check if already has smoke debuff
+                         const existing = tgt.statusEffects.find(e => e.type === 'confused'); // Reusing 'confused' for now, or add 'smokeBlind'
+                         
+                         // Spec: Accuracy -30%, Reaction +0.5s, Speed -10%
+                         // We can implement this by adding a 'smokeBlind' status effect and handling it in AI logic.
+                         // For now, let's use 'confused' as a proxy for "target confusion" mentioned in spec.
+                         // And maybe modify velocity directly? No, better to use status effect.
+                         
                          if (existing) {
-                             existing.duration = 1000;
+                             existing.duration = 100; // Refresh while in smoke
                              existing.startTime = now;
                          } else {
-                             tgt.statusEffects.push({ type: 'confused', ownerId: zone.ownerId, startTime: now, duration: 1000 });
+                             tgt.statusEffects.push({ 
+                                 type: 'confused', 
+                                 ownerId: zone.ownerId, 
+                                 startTime: now, 
+                                 duration: 100 
+                             });
                          }
+                         
+                         // Slow down
+                         tgt.velocity.x *= 0.9;
+                         tgt.velocity.y *= 0.9;
                      }
                  });
              } else if (zone.type === 'fissure' || zone.type === 'fire' || zone.type === 'poison' || zone.type === 'conductive') {
@@ -1319,6 +1442,77 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }
 
         // 2. Abilities & Projectiles & Boss & AI
+        
+        // Handle Hold Logic for Shadow Strike (E) / Venom Chain (F)
+        const isShadowHold = g.keys['e'] || g.keys['E'];
+        const isVenomHold = g.keys['f'] || g.keys['F'];
+        
+        // Speed boost during chain
+        if (g.player.activeChainAttack) {
+            (g.player as any).speedMultiplier = 1.2;
+        } else {
+            (g.player as any).speedMultiplier = 1.0;
+        }
+
+        if (isShadowHold || isVenomHold) {
+            if (g.player.activeChainAttack) {
+                const chain = g.player.activeChainAttack;
+                const isCorrectKey = (chain.type === 'shadowStrike' && isShadowHold) || (chain.type === 'venomBlade' && isVenomHold);
+
+                if (isCorrectKey && now - chain.lastSlashTime > chain.interval) {
+                    if (chain.count < chain.maxCount) {
+                        // Trigger next slash
+                        chain.count++;
+                        chain.lastSlashTime = now;
+                        
+                        const isVenom = chain.type === 'venomBlade';
+                        const range = 150;
+                        const damage = isVenom ? 7 : chain.baseDamage * 0.6;
+                        
+                        audio.play(isVenom ? 'venomBlade' : 'shadowStrike', 0, undefined, { pitch: 1.0 + chain.count * 0.1, volume: 0.8 });
+                        
+                        // Style: Slightly rotate turret angle per swing
+                        if (isVenom) {
+                            g.player.turretAngle += (chain.count % 2 === 0 ? 15 : -15);
+                        }
+
+                        // Visuals
+                        g.animations.push({
+                            id: `melee-chain-${now}`,
+                            type: 'meleeSwing',
+                            position: { ...g.player.position },
+                            angle: degToRad(g.player.turretAngle),
+                            createdAt: now,
+                            duration: 350,
+                            color: isVenom ? '#10b981' : '#a855f7',
+                            width: range,
+                            phase: 'anticipation',
+                            phaseStartTime: now,
+                            ownerId: 'player',
+                            swingArc: 120,
+                            hitTargets: [],
+                            damage: damage,
+                            poisonDamage: isVenom ? 1 : 0,
+                            poisonDuration: isVenom ? 3000 : 0,
+                            knockback: isVenom ? 20 : 0
+                        });
+                        
+                        // Snappy speed boost during chain
+                        if (isVenom) {
+                            g.screenShake = 3;
+                        }
+                    } else {
+                        g.player.activeChainAttack = undefined;
+                    }
+                }
+            }
+        } else {
+            // Key released, cancel chain
+            if (g.player.activeChainAttack) {
+                g.player.activeChainAttack = undefined;
+            }
+        }
+
         updateAbilities(g.player, now, timeScale);
         g.enemies.forEach(e => updateAbilities(e, now, timeScale));
         if (g.boss) updateAbilities(g.boss as any, now, timeScale);
@@ -1326,34 +1520,44 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         // Update Projectiles & Collisions
         g.projectiles = g.projectiles.filter(p => {
+            const now = Date.now();
+            
             // Smoke Bomb Detonation
             if (p.isSmokeBomb) {
+                // Slow down over time
+                p.velocity.x *= 0.95;
+                p.velocity.y *= 0.95;
+                p.position.x += p.velocity.x;
+                p.position.y += p.velocity.y;
+                
                 if (now >= (p.detonateTime || 0)) {
                     audio.play('smokeBomb');
+                    
+                    // Create Smoke Cloud EffectZone
                     g.effectZones.push({
                         id: `smoke-cloud-${now}-${Math.random()}`,
                         type: 'smoke',
                         position: { ...p.position },
-                        radius: 150,
+                        radius: 150, // 3.5 units approx
                         createdAt: now,
                         duration: 5000,
                         ownerId: p.ownerId,
                         damagePerTick: 0
                     });
+                    
+                    // Visuals
                     g.animations.push({
                         id: `smoke-anim-${now}`,
-                        type: 'smokeCloud',
+                        type: 'smokeCloud', // Need to ensure this type exists or use 'explosion' with custom color
                         position: { ...p.position },
                         createdAt: now,
                         duration: 5000,
                         width: 150,
                         color: '#64748b'
                     });
-                    return false;
+                    return false; // Remove projectile
                 }
-                // Slow down over time
-                p.velocity.x *= 0.95;
-                p.velocity.y *= 0.95;
+                return true; // Keep projectile
             }
 
             // Poison Gas Impact
@@ -1490,6 +1694,14 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             }
         }
 
+        // Update Status Effects
+        updateStatusEffects(g.player, now);
+        g.enemies.forEach(e => updateStatusEffects(e, now));
+        g.bosses.forEach(b => updateStatusEffects(b, now));
+
+        // Update Melee Animations
+        updateMeleeAnimations(now);
+
         // AI Update
         g.enemies.forEach(e => updateEnemyAI(e, player, g.enemies, game.current.powerUps, now, timeScale, diffConfig, () => {
             const angle = e.turretAngle;
@@ -1527,6 +1739,33 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         
         // Cleanup
         g.damageNumbers = g.damageNumbers.filter(d => now < d.createdAt + d.duration);
+        
+        // Update Combat Text (Blips)
+        g.combatText = g.combatText.filter(ct => now < ct.createdAt + ct.duration);
+        g.combatText.forEach(ct => {
+            if (ct.type === 'blip') {
+                const BLIP_SPEED = 50;
+                const elapsed = now - ct.createdAt;
+                const visibleChars = Math.floor(elapsed / BLIP_SPEED) + 1;
+                
+                if (visibleChars > (ct.lastBlipIndex ?? -1) && visibleChars <= ct.text.length) {
+                    ct.lastBlipIndex = visibleChars;
+                    const pitch = 0.5 + (ct.comboTier || 0) * 0.2;
+                    audio.play('robotBlip', 0, undefined, { pitch, volume: 0.5, variation: false });
+                }
+                
+                if (elapsed > ct.text.length * BLIP_SPEED && !ct.playedImpact) {
+                    ct.playedImpact = true;
+                    const pitch = 1.0 + (ct.comboTier || 0) * 0.2;
+                    audio.play('impact_heavy', 0, undefined, { pitch, volume: 0.8 });
+                    
+                    // Screen shake on impact
+                    if ((ct.comboTier || 0) >= 2) {
+                        g.screenShake = 5 + (ct.comboTier || 0) * 2;
+                    }
+                }
+            }
+        });
         g.telegraphs = g.telegraphs.filter(t => now < t.createdAt + t.duration);
         g.animations = g.animations.filter(a => now < a.createdAt + a.duration);
 
@@ -1562,6 +1801,9 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
              setUiState(prev => ({...prev, damageConverterCharge: g.player.damageConverterCharge || 0}));
         }
 
+        // Sync Mouse Position for Tactical UI
+        setUiState(prev => ({...prev, mousePos: { x: Math.round(g.mouse.x), y: Math.round(g.mouse.y) }}));
+
         // Sync Combo State
         const comboTimeLeft = Math.max(0, 3000 - (now - g.lastKillTime));
         setUiState(prev => ({
@@ -1572,6 +1814,159 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         }));
     };
     
+    function updateMeleeAnimations(now: number) {
+        const g = game.current;
+        
+        g.animations.forEach(anim => {
+            if (anim.type !== 'meleeSwing' || !anim.phase) return;
+            
+            const elapsed = now - (anim.phaseStartTime || anim.createdAt);
+            
+            // Sync position with owner
+            if (anim.ownerId) {
+                const owner = anim.ownerId === 'player' ? g.player : [...g.enemies, ...g.bosses].find(t => t.id === anim.ownerId);
+                if (owner && owner.status === 'active') {
+                    anim.position = { ...owner.position };
+                    // Update angle to match turret for locked rotation
+                    anim.angle = degToRad(owner.turretAngle); 
+                }
+            }
+
+            if (anim.phase === 'anticipation') {
+                if (elapsed >= 100) {
+                    anim.phase = 'strike';
+                    anim.phaseStartTime = now;
+                }
+            } else if (anim.phase === 'strike') {
+                // Hit Detection
+                if (!anim.hitTargets) anim.hitTargets = [];
+                
+                // Define targets
+                const targets = anim.ownerId === 'player' ? [...g.enemies, ...g.bosses] : [g.player];
+                const range = anim.width || 150;
+                const arc = (anim.swingArc || 120) * (Math.PI / 180);
+                const currentAngle = anim.angle || 0;
+
+                targets.forEach(t => {
+                    if (t.status !== 'active' || anim.hitTargets?.includes(t.id)) return;
+                    
+                    const dx = t.position.x - anim.position.x;
+                    const dy = t.position.y - anim.position.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    if (dist <= range + t.size.width/2) {
+                        const angleToTarget = Math.atan2(dy, dx);
+                        let angleDiff = Math.abs(angleToTarget - currentAngle);
+                        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+                        
+                        if (angleDiff <= arc / 2) {
+                            // Hit!
+                            anim.hitTargets?.push(t.id);
+                            
+                            // Damage Logic
+                            const damage = anim.damage || 10; 
+                            const isVenom = anim.color === '#10b981';
+                            
+                            // Backstab
+                            const targetFacing = degToRad(t.angle);
+                            let backstabDiff = Math.abs(angleToTarget - targetFacing);
+                            if (backstabDiff > Math.PI) backstabDiff = 2 * Math.PI - backstabDiff;
+                            const isBackstab = backstabDiff < (45 * Math.PI / 180);
+                            const finalDamage = isBackstab ? damage * 1.25 : damage;
+                            
+                            applyDamage(t, finalDamage, anim.ownerId || 'player');
+                            
+                            if (isBackstab && anim.ownerId === 'player') {
+                                g.damageNumbers.push({
+                                    id: `crit-${now}-${t.id}`,
+                                    text: 'BACKSTAB!',
+                                    position: { ...t.position, y: t.position.y - 20 },
+                                    createdAt: now,
+                                    duration: 1000,
+                                    color: '#ef4444',
+                                    isCritical: true
+                                });
+                            }
+                            
+                            if (isVenom) {
+                                if (!t.statusEffects) t.statusEffects = [];
+                                t.statusEffects.push({
+                                    type: 'poison',
+                                    duration: anim.poisonDuration || 5000,
+                                    startTime: now,
+                                    damagePerTick: anim.poisonDamage || 2,
+                                    tickInterval: 1000,
+                                    lastTick: now
+                                });
+
+                                // Hit Particles (Tiny bursts)
+                                for (let i = 0; i < 5; i++) {
+                                    g.animations.push({
+                                        id: `venom-hit-${now}-${t.id}-${i}`,
+                                        type: 'hit',
+                                        position: { ...t.position },
+                                        createdAt: now,
+                                        duration: 300,
+                                        color: '#10b981',
+                                        width: 10 + Math.random() * 10
+                                    });
+                                }
+                            }
+
+                            // Knockback
+                            if (anim.knockback && anim.knockback > 0) {
+                                const kx = Math.cos(angleToTarget) * anim.knockback;
+                                const ky = Math.sin(angleToTarget) * anim.knockback;
+                                t.position.x += kx;
+                                t.position.y += ky;
+                            }
+                            
+                            if (anim.ownerId === 'player') {
+                                g.screenShake = 5;
+                            }
+                        }
+                    }
+                });
+
+                if (elapsed >= 150) {
+                    anim.phase = 'recovery';
+                    anim.phaseStartTime = now;
+                }
+            }
+        });
+    }
+
+    function updateStatusEffects(tank: TankType | Boss, now: number) {
+        if (!tank.statusEffects || tank.statusEffects.length === 0) return;
+        
+        tank.statusEffects = tank.statusEffects.filter(eff => {
+            // Check duration
+            const startTime = eff.startTime || 0;
+            if (now > startTime + eff.duration) return false;
+            
+            // Handle DOT
+            if (eff.type === 'poison' || eff.type === 'fire') {
+                if (!eff.lastTick || now - eff.lastTick > (eff.tickInterval || 1000)) {
+                    eff.lastTick = now;
+                    applyDamage(tank, eff.damagePerTick || 5, eff.ownerId);
+                    
+                    // Visual
+                    const color = eff.type === 'poison' ? '#10b981' : '#f97316';
+                    game.current.damageNumbers.push({
+                        id: `dot-${now}-${Math.random()}`,
+                        text: (eff.damagePerTick || 5).toString(),
+                        position: { ...tank.position, y: tank.position.y - 30 },
+                        createdAt: now,
+                        duration: 600,
+                        color: color
+                    });
+                }
+            }
+            
+            return true;
+        });
+    }
+
     function updateAbilities(tank: TankType, now: number, timeScale: number) {
         const g = game.current;
         let stateChanged = false;
@@ -1679,6 +2074,27 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     stateChanged = true;
                 }
             }
+            else if (a.id === 'shadowStrike' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 300)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'venomBlade' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 300)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'smokeBomb' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 500)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
             // VOLT STRIDER ABILITIES
             if (a.id === 'lightningDash') {
                 // Charge Replenishment
@@ -1768,6 +2184,22 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     // Apply Exhaustion
                     tank.isExhausted = true;
                     tank.exhaustionStartTime = now;
+                }
+            }
+            
+            else if (a.id === 'rapidBlast' || a.id === 'shieldSlam' || a.id === 'empPulse') {
+                // Instant effects, move to cooldown after a short delay for visual feedback in UI
+                if (a.state === 'active' && now > a.startTime + 500) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
+                }
+            }
+            else if (a.id === 'toxicSpray' && a.state === 'active') {
+                if (now > a.startTime + (a.duration || 4000)) {
+                    newState = 'cooldown';
+                    newStartTime = now;
+                    stateChanged = true;
                 }
             }
             
@@ -3235,21 +3667,44 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         });
     };
 
-    function spawnBoss(type: 'goliath' | 'viper' | 'sentinel', position?: Vector, status: 'spawning' | 'active' = 'spawning') {
+    function spawnBoss(type: BossType, position?: Vector, status: 'spawning' | 'active' = 'spawning') {
         const hp = 1000 * diffConfig.bossHpMultiplier; // Slightly nerfed from 1200
         const bossId = `boss-${Date.now()}-${Math.random()}`;
+        
+        let bossColor = '#ef4444';
+        let bossSize = { width: 110, height: 110 };
+        let bossHp = hp;
+        
+        if (type === 'blitz-predator') {
+            bossColor = '#ff0055';
+            bossSize = { width: 60, height: 60 };
+            bossHp = hp * 0.6;
+        } else if (type === 'thunder-colossus') {
+            bossColor = '#eab308';
+            bossSize = { width: 140, height: 140 };
+            bossHp = hp * 1.5;
+        } else if (type === 'mirror-knight') {
+            bossColor = '#e2e8f0';
+            bossSize = { width: 80, height: 80 };
+            bossHp = hp * 0.9;
+        } else if (type === 'toxic-swarm') {
+            bossColor = '#10b981';
+            bossSize = { width: 70, height: 70 };
+            bossHp = hp * 0.7;
+        }
+
         const boss: Boss = {
             id: bossId, 
-            name: type.toUpperCase(), 
+            name: type.toUpperCase().replace('-', ' '), 
             bossType: type, 
             position: position || { x: ARENA_WIDTH/2, y: 150 }, 
             velocity: {x:0,y:0}, 
             angle: 90, 
             turretAngle: 90, 
-            size: { width: 110, height: 110 }, 
-            health: hp, 
-            maxHealth: hp, 
-            color: '#ef4444', 
+            size: bossSize, 
+            health: bossHp, 
+            maxHealth: bossHp, 
+            color: bossColor, 
             status: status, 
             spawnTime: status === 'spawning' ? Date.now() : 0, 
             attackState: { currentAttack: 'none', phase: 'idle', phaseStartTime: Date.now() },
@@ -3267,19 +3722,47 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
     const sandboxActions = {
         toggleGodMode: () => {
             game.current.sandbox.godMode = !game.current.sandbox.godMode;
+            setSandboxSettings({ ...game.current.sandbox });
             audio.play('uiClick');
         },
         toggleInfiniteEnergy: () => {
             game.current.sandbox.infiniteEnergy = !game.current.sandbox.infiniteEnergy;
+            setSandboxSettings({ ...game.current.sandbox });
             audio.play('uiClick');
         },
         setTimeScale: (val: number) => {
             game.current.sandbox.timeScale = val;
+            setSandboxSettings({ ...game.current.sandbox });
             audio.play('uiClick');
         },
         setSpawnMode: (mode: string) => {
             game.current.sandbox.spawnMode = mode;
+            setSandboxSettings({ ...game.current.sandbox });
             audio.play('uiClick');
+        },
+        changeChassis: (chassis: ChassisType) => {
+            game.current.player.chassis = chassis;
+            // Reset health to max for new chassis
+            const stats = getChassisStats(chassis);
+            game.current.player.maxHealth = stats.health;
+            game.current.player.health = stats.health;
+            // Update abilities
+            game.current.abilities = stats.abilities.map(id => {
+                const base = ALL_ABILITIES.find(a => a.id === id);
+                return { ...base!, state: 'ready', startTime: 0 };
+            });
+            setUiState(prev => ({ ...prev, playerHealth: stats.health, playerMaxHealth: stats.health, abilities: [...game.current.abilities] }));
+            audio.play('bossSpawn'); // Use a distinct sound
+            
+            // Visual effect
+            game.current.animations.push({
+                id: `transform-${Date.now()}`,
+                type: 'teleport',
+                position: { ...game.current.player.position },
+                createdAt: Date.now(),
+                duration: 1000,
+                color: '#00E0FF'
+            });
         },
         spawnPowerUp: (type: PowerUpType, position?: Vector) => {
             const pos = position || {
@@ -3464,6 +3947,10 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
             if (mode === 'enemy-basic') sandboxActions.spawnEnemy('basic', pos);
             else if (mode === 'enemy-intermediate') sandboxActions.spawnEnemy('intermediate', pos);
             else if (mode === 'boss-goliath') spawnBoss('goliath', pos);
+            else if (mode === 'boss-blitz-predator') spawnBoss('blitz-predator', pos);
+            else if (mode === 'boss-thunder-colossus') spawnBoss('thunder-colossus', pos);
+            else if (mode === 'boss-mirror-knight') spawnBoss('mirror-knight', pos);
+            else if (mode === 'boss-toxic-swarm') spawnBoss('toxic-swarm', pos);
             else if (mode.startsWith('powerup-')) {
                 const type = mode.replace('powerup-', '') as PowerUpType;
                 sandboxActions.spawnPowerUp(type, pos);
@@ -3848,6 +4335,160 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                 }
                 // Effects handled in update loop
                 
+            } else if (id === 'rapidBlast') {
+                if (isPlayer) {
+                    audio.play('rapidBlast');
+                    addStatusMessage('RAPID BLAST', 'info', '#facc15');
+                    game.current.screenShake = 10;
+                } else {
+                    audio.play('rapidBlast', tank.position, game.current.player.position);
+                }
+                
+                const range = 180;
+                const damage = 20;
+                
+                game.current.animations.push({
+                    id: `rapid-${now}`,
+                    type: 'explosion',
+                    position: { ...tank.position },
+                    createdAt: now,
+                    duration: 400,
+                    color: '#facc15'
+                });
+
+                const targets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                targets.forEach(t => {
+                    if (!t || t.status !== 'active') return;
+                    const dist = Math.hypot(t.position.x - tank.position.x, t.position.y - tank.position.y);
+                    if (dist < range) {
+                        applyDamage(t as TankType | Boss, damage, tank.id);
+                        // Small pushback
+                        const angle = Math.atan2(t.position.y - tank.position.y, t.position.x - tank.position.x);
+                        t.position.x += Math.cos(angle) * 40;
+                        t.position.y += Math.sin(angle) * 40;
+                    }
+                });
+
+            } else if (id === 'shieldSlam') {
+                if (isPlayer) {
+                    audio.play('shieldSlam');
+                    addStatusMessage('SHIELD SLAM', 'info', '#38bdf8');
+                    game.current.screenShake = 20;
+                } else {
+                    audio.play('shieldSlam', tank.position, game.current.player.position);
+                }
+                
+                const range = 220;
+                const coneAngle = 60; // Degrees
+                const damage = 10;
+                
+                game.current.animations.push({
+                    id: `slam-${now}`,
+                    type: 'shockwave',
+                    position: { ...tank.position },
+                    angle: tank.turretAngle,
+                    createdAt: now,
+                    duration: 500,
+                    width: range * 2,
+                    color: '#38bdf8'
+                });
+
+                const targets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                targets.forEach(t => {
+                    if (!t || t.status !== 'active') return;
+                    const dx = t.position.x - tank.position.x;
+                    const dy = t.position.y - tank.position.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < range) {
+                        const angleToTarget = Math.atan2(dy, dx) * (180 / Math.PI);
+                        let diff = Math.abs(angleToTarget - tank.turretAngle);
+                        if (diff > 180) diff = 360 - diff;
+                        
+                        if (diff < coneAngle) {
+                            applyDamage(t as TankType | Boss, damage, tank.id);
+                            // Stun
+                            if (!t.statusEffects) t.statusEffects = [];
+                            t.statusEffects.push({
+                                type: 'stun',
+                                ownerId: tank.id,
+                                startTime: now,
+                                duration: 1500
+                            });
+                            // Strong pushback
+                            const pushAngle = angleToTarget * (Math.PI / 180);
+                            t.position.x += Math.cos(pushAngle) * 150;
+                            t.position.y += Math.sin(pushAngle) * 150;
+                        }
+                    }
+                });
+
+            } else if (id === 'toxicSpray') {
+                if (isPlayer) {
+                    audio.play('toxicSpray');
+                    addStatusMessage(isTrueForm ? 'VEXING MIASMA' : 'TOXIC SPRAY', 'info', '#22c55e');
+                } else {
+                    audio.play('toxicSpray', tank.position, game.current.player.position);
+                }
+                
+                // Spawns a persistent zone around the tank
+                game.current.effectZones.push({
+                    id: `toxic-${now}`,
+                    type: 'poison',
+                    position: { ...tank.position },
+                    radius: isTrueForm ? 350 : 200,
+                    createdAt: now,
+                    duration: isTrueForm ? 6000 : 4000,
+                    ownerId: tank.id,
+                    isAttachedToOwner: true,
+                    damagePerTick: isTrueForm ? 12 : 5
+                });
+
+            } else if (id === 'empPulse') {
+                if (isPlayer) {
+                    audio.play('empPulse');
+                    addStatusMessage('EMP PULSE', 'info', '#a855f7');
+                    game.current.screenShake = 15;
+                } else {
+                    audio.play('empPulse', tank.position, game.current.player.position);
+                }
+                
+                const range = 300;
+                
+                game.current.animations.push({
+                    id: `emp-${now}`,
+                    type: 'shockwave',
+                    position: { ...tank.position },
+                    createdAt: now,
+                    duration: 600,
+                    width: range * 2,
+                    color: '#a855f7'
+                });
+
+                const targets = isPlayer ? [...game.current.enemies, ...game.current.bosses] : [game.current.player];
+                targets.forEach(t => {
+                    if (!t || t.status !== 'active') return;
+                    const dist = Math.hypot(t.position.x - tank.position.x, t.position.y - tank.position.y);
+                    if (dist < range) {
+                        // Slow effect
+                        if (!t.statusEffects) t.statusEffects = [];
+                        t.statusEffects.push({
+                            type: 'stun', // Use stun for now as a "disable"
+                            ownerId: tank.id,
+                            startTime: now,
+                            duration: 2000
+                        });
+                        // Disable abilities if it's a boss or player
+                        if (t.abilities) {
+                            t.abilities.forEach(a => {
+                                if (a.state === 'ready') {
+                                    a.state = 'cooldown';
+                                    a.startTime = now - a.cooldown + 2000; // 2s cooldown
+                                }
+                            });
+                        }
+                    }
+                });
+
             } else if (id === 'counterSurge') {
                 if (isPlayer) audio.play('parryReady');
                 tank.isParrying = true;
@@ -3932,14 +4573,86 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     audio.play('shadowStrike');
                     addStatusMessage('SHADOW STRIKE', 'info', '#a855f7');
                 }
-                // Initial slice is handled in update loop
+                
+                // Check for Hold (Chain Attack)
+                if (isPlayer) {
+                    game.current.player.activeChainAttack = {
+                        type: 'shadowStrike',
+                        count: 0,
+                        maxCount: 4,
+                        lastSlashTime: now,
+                        interval: 180,
+                        baseDamage: 10
+                    };
+                }
+
+                // Cone Attack Logic
+                const range = 150;
+                
+                // Visuals
+                game.current.animations.push({
+                    id: `melee-${now}`,
+                    type: 'meleeSwing',
+                    position: { ...tank.position },
+                    angle: degToRad(tank.turretAngle),
+                    createdAt: now,
+                    duration: 350,
+                    color: '#a855f7',
+                    width: range,
+                    phase: 'anticipation',
+                    phaseStartTime: now,
+                    ownerId: tank.id,
+                    swingArc: 120,
+                    hitTargets: [],
+                    damage: 10
+                });
+
+            } else if (id === 'venomBlade') {
+                if (isPlayer) {
+                    audio.play('venomBlade');
+                    addStatusMessage('VENOM CHAIN', 'info', '#10b981');
+                    
+                    game.current.player.activeChainAttack = {
+                        type: 'venomBlade',
+                        count: 0,
+                        maxCount: 2, // 3 swings total
+                        lastSlashTime: now,
+                        interval: 200,
+                        baseDamage: 7
+                    };
+                }
+                
+                // Cone Attack Logic
+                const range = 150;
+                
+                // Visuals
+                game.current.animations.push({
+                    id: `melee-venom-${now}`,
+                    type: 'meleeSwing',
+                    position: { ...tank.position },
+                    angle: degToRad(tank.turretAngle),
+                    createdAt: now,
+                    duration: 350,
+                    color: '#10b981',
+                    width: range,
+                    phase: 'anticipation',
+                    phaseStartTime: now,
+                    ownerId: tank.id,
+                    swingArc: 120,
+                    hitTargets: [],
+                    damage: 7,
+                    poisonDamage: 1,
+                    poisonDuration: 3000,
+                    knockback: 20
+                });
+
             } else if (id === 'smokeBomb') {
                 if (isPlayer) {
-                    audio.play('uiClick'); // Placeholder for throw sound
+                    audio.play('rocketLaunch'); // Throw sound
                     addStatusMessage('SMOKE BOMB', 'info', '#64748b');
                 }
                 // Spawn smoke bomb projectile
-                const speed = 15;
+                const speed = 12;
                 const angle = degToRad(tank.turretAngle);
                 game.current.projectiles.push({
                     id: `smoke-${Date.now()}`,
@@ -3951,15 +4664,12 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     color: '#64748b',
                     createdAt: Date.now(),
                     isSmokeBomb: true,
-                    detonateTime: Date.now() + 2000
+                    detonateTime: Date.now() + 1800,
+                    angle: 0,
+                    size: { width: 16, height: 16 }
                 });
-            } else if (id === 'venomBlade') {
-                if (isPlayer) {
-                    audio.play('venomBlade');
-                    addStatusMessage('VENOM BLADE', 'info', '#10b981');
-                }
-                // Initial slice is handled in update loop
             }
+            
             if (isPlayer) setUiState(prev => ({...prev, abilities: [...game.current.abilities]}));
         }
     };
@@ -4039,7 +4749,7 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
         ctx.restore();
         
         // Draw Combat Text outside camera but inside canvas coordinate space
-
+        drawCombatText(ctx, g.combatText, now);
         
         // UI Overlay for Cutscene
         if (g.cutscene.active) {
@@ -4063,20 +4773,24 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     />
                     <button 
                         onClick={() => navigateTo('main-menu')}
-                        className="absolute top-6 left-48 z-50 px-4 py-2 bg-black/60 border border-red-500/50 text-red-500 font-orbitron text-xs hover:bg-red-500/20 transition-all flex items-center gap-2 group pointer-events-auto shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                        className="absolute bottom-8 left-[360px] z-50 px-4 py-2 bg-black/60 border border-red-500/50 text-red-500 font-orbitron text-[10px] tracking-widest uppercase hover:bg-red-500/20 transition-all flex items-center gap-2 group pointer-events-auto shadow-[0_0_15px_rgba(239,68,68,0.2)] rounded-sm backdrop-blur-md"
                     >
                         <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                         </svg>
-                        EXIT TO MENU
+                        SYS_ABORT
                     </button>
                     <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-4 pointer-events-none">
                         <Leaderboard player={{...game.current.player, score: uiState.playerScore}} enemies={game.current.enemies} boss={game.current.boss} />
                         <KillFeed messages={game.current.killFeed} />
                     </div>
                     <StatusFeed messages={uiState.statusMessages} />
-                    <div className="absolute left-8 top-64 bottom-8 w-80 z-20 pointer-events-none">
-                        <AbilityHotbar abilities={uiState.abilities.length ? uiState.abilities : game.current.abilities} damageConverterCharge={uiState.damageConverterCharge} /> 
+                    <div className="absolute left-6 top-[240px] bottom-8 w-[340px] z-20 pointer-events-none">
+                        <AbilityHotbar 
+                            abilities={uiState.abilities.length ? uiState.abilities : game.current.abilities} 
+                            damageConverterCharge={uiState.damageConverterCharge} 
+                            mousePos={uiState.mousePos}
+                        /> 
                     </div>
                     {game.current.boss && <BossHealthBar boss={game.current.boss} />}
                 </>
@@ -4096,8 +4810,8 @@ const GameScreen: React.FC<{ navigateTo: (screen: Screen) => void, config: GameC
                     <SandboxPanel 
                         isOpen={isSandboxPanelOpen} 
                         onClose={() => setIsSandboxPanelOpen(false)} 
-                        actions={sandboxActions}
-                        settings={game.current.sandbox}
+                        actions={sandboxActions as any}
+                        settings={sandboxSettings}
                     />
                 </>
             )}
@@ -4133,6 +4847,9 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 function updateEnemyAI(e: TankType, player: TankType, allEnemies: TankType[], powerUps: PowerUp[], now: number, timeScale: number, diffConfig: any, onFire: () => void, triggerAbility: (id: string, tank: TankType) => void): void {
     if (e.status !== 'active' || player.status !== 'active') return;
+
+    // Stun Check
+    if (e.statusEffects?.some(eff => eff.type === 'stun')) return;
 
     // Volt Lock (Dazed) Logic
     let targetPos = player.position;
@@ -4244,7 +4961,10 @@ function updateEnemyAI(e: TankType, player: TankType, allEnemies: TankType[], po
         if (e.aiMode === 'strafe') e.aiStrafeDir = Math.random() > 0.5 ? 1 : -1;
     }
 
-    const speed = (e.tier === 'intermediate' ? 1.5 : 2.0) * diffConfig.speedMultiplier * timeScale;
+    let speed = (e.tier === 'intermediate' ? 1.5 : 2.0) * diffConfig.speedMultiplier * timeScale;
+    if (e.statusEffects?.some(eff => eff.type === 'confused')) {
+        speed *= 0.7; // 30% slow
+    }
     let shouldMove = false;
     let targetMoveAngle = e.angle;
 

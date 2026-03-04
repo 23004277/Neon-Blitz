@@ -123,7 +123,7 @@ export interface PowerUp {
 
 export interface Animation {
   id:string;
-  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam' | 'fluxRipple' | 'fluxShatter' | 'shadowSlice' | 'smokeCloud' | 'venomSlice';
+  type: 'muzzleFlash' | 'hit' | 'explosion' | 'shieldHit' | 'shieldBreak' | 'barrageImpact' | 'laneAttack' | 'mortarStrike' | 'finalBlast' | 'poisonTick' | 'homingExplosion' | 'chronoShardImpact' | 'dashTrail' | 'teleport' | 'railgunBeam' | 'shockwave' | 'mineExplosion' | 'lightning' | 'transformFlash' | 'transformCharge' | 'orbitalBeam' | 'fluxRipple' | 'fluxShatter' | 'shadowSlice' | 'smokeCloud' | 'venomSlice' | 'slash' | 'meleeSwing';
   createdAt: number;
   duration: number;
   position: Vector;
@@ -135,9 +135,22 @@ export interface Animation {
   height?: number;
   opacity?: number;
   targetPosition?: Vector; // For beams and lightning
+  
+  // Melee Animation Properties
+  phase?: 'anticipation' | 'strike' | 'recovery';
+  phaseStartTime?: number;
+  ownerId?: string;
+  swingArc?: number;
+  baseAngle?: number;
+  hitProcessed?: boolean;
+  hitTargets?: string[]; // Track IDs of hit targets
+  damage?: number;
+  poisonDamage?: number;
+  poisonDuration?: number;
+  knockback?: number;
 }
 
-export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'poisonGas' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard' | 'lightningDash' | 'emOverload' | 'staticVeil' | 'voltLock' | 'overdriveCore' | 'conductiveField' | 'counterSurge' | 'shadowStrike' | 'smokeBomb' | 'venomBlade';
+export type AbilityId = 'overdrive' | 'cyberBeam' | 'missileBarrage' | 'toxicRounds' | 'teslaStorm' | 'damageConverter' | 'shockwave' | 'poisonGas' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'nanoSwarm' | 'phaseShift' | 'flamethrower' | 'chainLightning' | 'prismGuard' | 'lightningDash' | 'emOverload' | 'staticVeil' | 'voltLock' | 'overdriveCore' | 'conductiveField' | 'counterSurge' | 'shadowStrike' | 'smokeBomb' | 'venomBlade' | 'rapidBlast' | 'shieldSlam' | 'toxicSpray' | 'empPulse';
 
 export interface Ability {
   id: AbilityId;
@@ -154,45 +167,64 @@ export interface Ability {
 }
 
 export interface PoisonStatusEffect {
+  id?: string;
   type: 'poison';
-  ownerId: string;
-  stacks: number;
-  lastApplied: number;
+  ownerId?: string;
+  stacks?: number;
+  lastApplied?: number;
   duration: number; // Duration is refreshed on each application
-  tickDamage: number;
-  tickInterval: number;
-  lastTickTime: number;
+  tickDamage?: number;
+  tickInterval?: number;
+  lastTickTime?: number;
+  startTime?: number;
+  damagePerTick?: number;
+  lastTick?: number;
+}
+
+export interface FireStatusEffect {
+  id?: string;
+  type: 'fire';
+  ownerId?: string;
+  startTime: number;
+  duration: number;
+  damagePerTick?: number;
+  tickInterval?: number;
+  lastTick?: number;
 }
 
 export interface StunStatusEffect {
+  id?: string;
   type: 'stun';
-  ownerId: string;
+  ownerId?: string;
   startTime: number;
   duration: number;
 }
 
 export interface ConductiveStatusEffect {
+  id?: string;
   type: 'conductive';
-  ownerId: string;
+  ownerId?: string;
   startTime: number;
   duration: number;
 }
 
 export interface VoltLockStatusEffect {
+  id?: string;
   type: 'voltLock';
-  ownerId: string;
+  ownerId?: string;
   startTime: number;
   duration: number;
 }
 
 export interface ConfusedStatusEffect {
+  id?: string;
   type: 'confused';
-  ownerId: string;
+  ownerId?: string;
   startTime: number;
   duration: number;
 }
 
-export type StatusEffect = PoisonStatusEffect | StunStatusEffect | ConductiveStatusEffect | VoltLockStatusEffect | ConfusedStatusEffect;
+export type StatusEffect = PoisonStatusEffect | FireStatusEffect | StunStatusEffect | ConductiveStatusEffect | VoltLockStatusEffect | ConfusedStatusEffect;
 
 
 export interface RenderableEntity {
@@ -249,6 +281,14 @@ export interface Tank extends RenderableEntity {
   voltLockTargetId?: string;
   isExhausted?: boolean;
   exhaustionStartTime?: number;
+  activeChainAttack?: {
+      type: 'shadowStrike' | 'venomBlade';
+      count: number;
+      maxCount: number;
+      lastSlashTime: number;
+      interval: number;
+      baseDamage: number;
+  };
   
   // Phantom Weaver Properties
   shadowStrikeTarget?: Vector;
@@ -287,6 +327,8 @@ export interface EffectZone {
   duration: number;
   lastTick?: number; // For DoT logic
   ownerId?: string; // Added to track who created the zone
+  damagePerTick?: number;
+  isAttachedToOwner?: boolean;
 }
 
 export interface Minion extends RenderableEntity {
@@ -307,7 +349,7 @@ export interface Minion extends RenderableEntity {
 
 export interface Boss extends RenderableEntity {
   name: string;
-  bossType: 'goliath' | 'viper' | 'sentinel';
+  bossType: 'goliath' | 'viper' | 'sentinel' | 'blitz-predator' | 'thunder-colossus' | 'mirror-knight' | 'toxic-swarm';
   velocity: Vector; // Added for movement physics
   angle: number; // Body angle
   patrolTarget?: Vector;
@@ -352,7 +394,7 @@ export interface Boss extends RenderableEntity {
   critMultiplier?: number;
 
   attackState: {
-    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'poisonGas';
+    currentAttack: 'none' | 'mortarVolley' | 'laserSweep' | 'scatterMines' | 'lastStand' | 'summonMinions' | 'shockwave' | 'poisonGas' | 'dashBarrage' | 'spinningBlades' | 'chainLightning' | 'empPulse' | 'conductiveField' | 'reflectiveShield' | 'riposte' | 'swarmDash' | 'splitProjectiles';
     phase: 'idle' | 'telegraphing' | 'attacking' | 'recovering' | 'charging';
     phaseStartTime: number;
     attackData?: {
@@ -391,10 +433,15 @@ export interface DamageIndicator {
 export interface CombatText {
     id: string;
     text: string;
+    position: Vector;
     createdAt: number;
     duration: number;
     color: string;
     isCritical?: boolean;
+    type?: 'damage' | 'blip';
+    lastBlipIndex?: number; // For tracking audio blips
+    playedImpact?: boolean; // For tracking completion sound
+    comboTier?: number; // For pitch/intensity scaling
 }
 
 export interface KillFeedMessage {
@@ -453,4 +500,5 @@ export interface UIState {
     comboMultiplier?: number;
     comboCount?: number;
     comboTimeLeft?: number; // 0 to 1
+    mousePos?: { x: number; y: number };
 }

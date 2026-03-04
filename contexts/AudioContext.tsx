@@ -414,6 +414,30 @@ const SOUND_LIBRARY: Record<string, { layers: SoundLayer[] }> = {
         { type: 'noise', filterFreq: 1000, gain: 0.05, duration: 0.15 }
     ]
   },
+  rapidBlast: {
+    layers: [
+        { type: 'square', freqStart: 400, freqEnd: 100, gain: 0.15, duration: 0.2 },
+        { type: 'noise', filterFreq: 1500, gain: 0.1, duration: 0.15 }
+    ]
+  },
+  shieldSlam: {
+    layers: [
+        { type: 'sawtooth', freqStart: 150, freqEnd: 50, gain: 0.2, duration: 0.3 },
+        { type: 'noise', filterFreq: 800, gain: 0.15, duration: 0.25 }
+    ]
+  },
+  toxicSpray: {
+    layers: [
+        { type: 'noise', filterFreq: 1200, filterSweep: { start: 1200, end: 400 }, gain: 0.15, duration: 0.8 },
+        { type: 'sine', freqStart: 200, freqEnd: 100, gain: 0.05, duration: 0.6, modFreq: 20 }
+    ]
+  },
+  empPulse: {
+    layers: [
+        { type: 'sine', freqStart: 100, freqEnd: 2000, gain: 0.2, duration: 0.5, modFreq: 50 },
+        { type: 'square', freqStart: 2000, freqEnd: 100, gain: 0.1, duration: 0.4 }
+    ]
+  },
   impact_heavy: {
     layers: [
         { type: 'square', freqStart: 100, freqEnd: 20, gain: 0.3, duration: 0.3 },
